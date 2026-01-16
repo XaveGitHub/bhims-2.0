@@ -1,0 +1,430 @@
+/**
+ * Convex functions for managing document requests
+ * Optimized queries using schema indexes
+ */
+
+import { v } from "convex/values"
+import { query, mutation } from "./_generated/server"
+import { getCurrentUser } from "./users"
+
+// ==================== QUERIES ====================
+
+/**
+ * List all document requests with optional filtering
+ * Uses by_status index for efficient filtering
+ */
+export const list = query({
+  args: {
+    status: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("queued"),
+        v.literal("serving"),
+        v.literal("completed"),
+        v.literal("cancelled")
+      )
+    ),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    if (args.status) {
+      // Use composite index for efficient filtering and sorting
+      return await ctx.db
+        .query("documentRequests")
+        .withIndex("by_status_requestedAt", (q) => q.eq("status", args.status!))
+        .order("desc") // Newest first
+        .take(args.limit ?? 100)
+    }
+
+    // Default: return all requests (limited, newest first)
+    return await ctx.db
+      .query("documentRequests")
+      .withIndex("by_requestedAt")
+      .order("desc")
+      .take(args.limit ?? 100)
+  },
+})
+
+/**
+ * Get document request by ID
+ */
+export const get = query({
+  args: { id: v.id("documentRequests") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.id)
+  },
+})
+
+/**
+ * Get document request with all related data for staff process page
+ * Returns request with resident, items, document types, and queue info
+ */
+export const getForProcessing = query({
+  args: { id: v.id("documentRequests") },
+  handler: async (ctx, args) => {
+    const request = await ctx.db.get(args.id)
+    if (!request) return null
+
+    // Get resident
+    const resident = await ctx.db.get(request.residentId)
+    if (!resident) return null
+
+    // Get all items for this request
+    const items = await ctx.db
+      .query("documentRequestItems")
+      .withIndex("by_documentRequestId", (q) =>
+        q.eq("documentRequestId", args.id)
+      )
+      .order("asc")
+      .collect()
+
+    // Batch fetch document types
+    const documentTypeIds = [...new Set(items.map((item: any) => item.documentTypeId))]
+    const documentTypes = await Promise.all(
+      documentTypeIds.map((id) => ctx.db.get(id))
+    )
+    const documentTypeMap = new Map(
+      documentTypes.filter(Boolean).map((dt: any) => [dt._id, dt])
+    )
+
+    // Enrich items with document type info
+    const enrichedItems = items.map((item: any) => ({
+      ...item,
+      documentType: documentTypeMap.get(item.documentTypeId) || null,
+    }))
+
+    // Get queue info if exists (using index for efficient lookup)
+    // Since documentRequestId is unique, we can query efficiently with the index
+    const queueItem = await ctx.db
+      .query("queue")
+      .withIndex("by_documentRequestId", (q) => q.eq("documentRequestId", args.id))
+      .first() || null
+
+    return {
+      request,
+      resident,
+      items: enrichedItems,
+      queue: queueItem || null,
+    }
+  },
+})
+
+/**
+ * Get document requests by resident ID
+ * Uses by_residentId index
+ */
+export const listByResident = query({
+  args: {
+    residentId: v.id("residents"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("documentRequests")
+      .withIndex("by_residentId", (q) => q.eq("residentId", args.residentId))
+      .order("desc") // Newest first
+      .take(args.limit ?? 100)
+  },
+})
+
+/**
+ * Get document requests by status
+ * Uses by_status_requestedAt index
+ */
+export const listByStatus = query({
+  args: {
+    status: v.union(
+      v.literal("pending"),
+      v.literal("queued"),
+      v.literal("serving"),
+      v.literal("completed"),
+      v.literal("cancelled")
+    ),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("documentRequests")
+      .withIndex("by_status_requestedAt", (q) => q.eq("status", args.status))
+      .order("desc") // Newest first
+      .take(args.limit ?? 100)
+  },
+})
+
+/**
+ * Get document requests for staff dashboard
+ * Returns requests grouped by status (queued, serving, completed)
+ * Enriched with resident and document type information
+ * Optimized with limits and error handling
+ */
+export const getStaffRequests = query({
+  args: {
+    queuedLimit: v.optional(v.number()), // Limit for queued requests (default: 50)
+    servingLimit: v.optional(v.number()), // Limit for serving requests (default: 20)
+  },
+  handler: async (ctx, args) => {
+    // Get requests by status with reasonable limits
+    const queued = await ctx.db
+      .query("documentRequests")
+      .withIndex("by_status_requestedAt", (q) => q.eq("status", "queued"))
+      .order("asc") // Oldest first (FIFO)
+      .take(args.queuedLimit ?? 50) // Limit to prevent fetching too many
+
+    const serving = await ctx.db
+      .query("documentRequests")
+      .withIndex("by_status_requestedAt", (q) => q.eq("status", "serving"))
+      .order("asc") // Oldest first
+      .take(args.servingLimit ?? 20) // Limit serving requests
+
+    const completed = await ctx.db
+      .query("documentRequests")
+      .withIndex("by_status_requestedAt", (q) => q.eq("status", "completed"))
+      .order("desc") // Most recent first
+      .take(20) // Show last 20 completed
+
+    // Collect all requests for batch processing
+    const allRequests = [...queued, ...serving, ...completed]
+    
+    // Batch fetch all residents (unique IDs)
+    const residentIds = [...new Set(allRequests.map((r: any) => r.residentId))]
+    const residents = await Promise.all(
+      residentIds.map((id) => ctx.db.get(id))
+    )
+    const residentMap = new Map(
+      residents.filter(Boolean).map((r: any) => [r._id, r])
+    )
+
+    // Get all document request items for all requests
+    const allItems = await Promise.all(
+      allRequests.map((request: any) =>
+        ctx.db
+          .query("documentRequestItems")
+          .withIndex("by_documentRequestId", (q) => q.eq("documentRequestId", request._id))
+          .collect()
+      )
+    )
+    const flatItems = allItems.flat()
+
+    // Batch fetch all document types (unique IDs)
+    const documentTypeIds = [...new Set(flatItems.map((item: any) => item.documentTypeId))]
+    const documentTypes = await Promise.all(
+      documentTypeIds.map((id) => ctx.db.get(id))
+    )
+    const documentTypeMap = new Map(
+      documentTypes.filter(Boolean).map((dt: any) => [dt._id, dt])
+    )
+
+    // Create items map by request ID
+    const itemsByRequestId = new Map<string, any[]>()
+    flatItems.forEach((item: any) => {
+      const requestId = item.documentRequestId
+      if (!itemsByRequestId.has(requestId)) {
+        itemsByRequestId.set(requestId, [])
+      }
+      itemsByRequestId.get(requestId)!.push({
+        ...item,
+        documentType: documentTypeMap.get(item.documentTypeId) || null,
+      })
+    })
+
+    // Enrich requests with batched data
+    const enrichRequest = (request: any) => ({
+      ...request,
+      resident: residentMap.get(request.residentId) || null,
+      items: itemsByRequestId.get(request._id) || [],
+    })
+
+    // Enrich all requests (no async needed, using pre-fetched data)
+    const enrichedQueued = queued.map(enrichRequest)
+    const enrichedServing = serving.map(enrichRequest)
+    const enrichedCompleted = completed.map(enrichRequest)
+
+    return {
+      queued: enrichedQueued,
+      serving: enrichedServing,
+      completed: enrichedCompleted,
+      counts: {
+        queued: enrichedQueued.length,
+        serving: enrichedServing.length,
+        completed: enrichedCompleted.length,
+        total: enrichedQueued.length + enrichedServing.length + enrichedCompleted.length,
+      },
+    }
+  },
+})
+
+// ==================== MUTATIONS ====================
+
+/**
+ * Generate unique request number
+ * Format: REQ-YYYYMMDD-001 (increments daily)
+ */
+async function generateRequestNumber(ctx: any): Promise<string> {
+  const today = new Date()
+  const datePrefix = today.toISOString().slice(0, 10).replace(/-/g, "") // YYYYMMDD
+
+  // Get all requests created today
+  const todayStart = new Date(today)
+  todayStart.setHours(0, 0, 0, 0)
+
+  const allRequests = await ctx.db.query("documentRequests").collect()
+  const todayRequests = allRequests.filter(
+    (req: any) => req.requestedAt >= todayStart.getTime()
+  )
+
+  let maxNumber = 0
+
+  for (const req of todayRequests) {
+    const match = req.requestNumber.match(new RegExp(`${datePrefix}-(\\d+)`))
+    if (match) {
+      const num = parseInt(match[1], 10)
+      if (num > maxNumber) maxNumber = num
+    }
+  }
+
+  const nextNumber = (maxNumber + 1).toString().padStart(3, "0")
+  return `REQ-${datePrefix}-${nextNumber}`
+}
+
+/**
+ * Create a new document request
+ * Public users (via kiosk) can create requests
+ * Creates request with status "pending", then should be moved to "queued" when queue item is created
+ */
+export const create = mutation({
+  args: {
+    residentId: v.id("residents"),
+    totalPrice: v.number(), // In cents, sum of all documentRequestItems
+    requestNumber: v.optional(v.string()), // Optional - will auto-generate
+  },
+  handler: async (ctx, args) => {
+    // Note: This can be called by public users (kiosk), so no auth check needed
+    // Or we can make it require auth - depends on requirements
+    // For now, allowing public creation (kiosk use case)
+
+    // Generate request number if not provided
+    const requestNumber = args.requestNumber || (await generateRequestNumber(ctx))
+
+    // Check if request number already exists
+    const allRequests = await ctx.db.query("documentRequests").collect()
+    const existing = allRequests.find((req) => req.requestNumber === requestNumber)
+
+    if (existing) {
+      throw new Error(`Request number ${requestNumber} already exists`)
+    }
+
+    const now = Date.now()
+    return await ctx.db.insert("documentRequests", {
+      residentId: args.residentId,
+      requestNumber,
+      status: "pending", // Will be changed to "queued" when queue item is created
+      totalPrice: args.totalPrice,
+      requestedAt: now,
+    })
+  },
+})
+
+/**
+ * Update document request status
+ * Staff/Admin can update request status
+ */
+export const updateStatus = mutation({
+  args: {
+    id: v.id("documentRequests"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("queued"),
+      v.literal("serving"),
+      v.literal("completed"),
+      v.literal("cancelled")
+    ),
+  },
+  handler: async (ctx, args) => {
+    // Optional: Check auth if you want to restrict to staff/admin
+    // For now, allowing updates (queue system will update status)
+
+    const updates: any = {
+      status: args.status,
+    }
+
+    // Set completedAt when status becomes "completed"
+    if (args.status === "completed") {
+      updates.completedAt = Date.now()
+    }
+
+    await ctx.db.patch(args.id, updates)
+    return args.id
+  },
+})
+
+/**
+ * Complete document request
+ * Marks request as completed and sets completedAt timestamp
+ */
+export const complete = mutation({
+  args: { id: v.id("documentRequests") },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx)
+    if (!user) throw new Error("Unauthorized")
+
+    // Only staff/admin can complete requests
+    if (user.role !== "staff" && user.role !== "admin" && user.role !== "superadmin") {
+      throw new Error("Unauthorized: Only staff can complete requests")
+    }
+
+    await ctx.db.patch(args.id, {
+      status: "completed",
+      completedAt: Date.now(),
+    })
+
+    return args.id
+  },
+})
+
+/**
+ * Mark request as claim (all certificates printed, ready for resident to claim)
+ * Also updates queue status to "done"
+ */
+export const markAsClaim = mutation({
+  args: { id: v.id("documentRequests") },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx)
+    if (!user) throw new Error("Unauthorized")
+
+    // Only staff can mark as claim
+    if (user.role !== "staff" && user.role !== "admin" && user.role !== "superadmin") {
+      throw new Error("Unauthorized: Only staff can mark requests as claim")
+    }
+
+    // Check that all items are printed
+    const items = await ctx.db
+      .query("documentRequestItems")
+      .withIndex("by_documentRequestId", (q) =>
+        q.eq("documentRequestId", args.id)
+      )
+      .collect()
+
+    const allPrinted = items.every((item: any) => item.status === "printed")
+    if (!allPrinted) {
+      throw new Error("Cannot mark as claim: Not all certificates have been printed")
+    }
+
+    // Update request status to "completed" (claim is represented by completed status)
+    await ctx.db.patch(args.id, {
+      status: "completed",
+      completedAt: Date.now(),
+    })
+
+    // Update queue status to "done" if queue item exists
+    const allQueueItems = await ctx.db.query("queue").collect()
+    const queueItem = allQueueItems.find((q: any) => q.documentRequestId === args.id)
+    if (queueItem) {
+      await ctx.db.patch(queueItem._id, {
+        status: "done",
+        completedAt: Date.now(),
+      })
+    }
+
+    return args.id
+  },
+})

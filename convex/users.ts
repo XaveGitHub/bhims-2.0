@@ -24,17 +24,18 @@ export const upsertFromClerk = internalMutation({
   args: { data: v.any() as Validator<UserJSON> }, // no runtime validation, trust Clerk
   async handler(ctx, { data }) {
     // Validate and cast role to match schema type
+    // If no role in metadata or invalid, set to undefined (pending approval)
     const roleFromMetadata = data.public_metadata?.role as string | undefined;
     const validRoles = ["superadmin", "admin", "staff"] as const;
-    const role = (validRoles.includes(roleFromMetadata as any) 
-      ? roleFromMetadata 
-      : "staff") as "superadmin" | "admin" | "staff";
+    const role = validRoles.includes(roleFromMetadata as any)
+      ? (roleFromMetadata as "superadmin" | "admin" | "staff")
+      : undefined; // undefined = pending approval (no default role)
 
     const userAttributes = {
       name: `${data.first_name || ""} ${data.last_name || ""}`.trim() || "User",
       externalId: data.id, // Clerk user ID (stored in subject JWT field)
       email: data.email_addresses[0]?.email_address || "",
-      role,
+      role, // Can be undefined if no role assigned
       isActive: true,
       updatedAt: Date.now(),
     };
@@ -125,13 +126,49 @@ export async function getCurrentUserOrThrow(ctx: QueryCtx) {
 }
 
 // Helper: Get current user (returns null if not authenticated)
+// ✅ SAFETY: Multiple defensive checks to prevent ctx.auth errors
 export async function getCurrentUser(ctx: QueryCtx) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (identity === null) {
+  // Safety check 1: ctx might be undefined (shouldn't happen, but defensive)
+  if (!ctx) {
+    console.warn('getCurrentUser: ctx is undefined');
     return null;
   }
-  // Use identity.subject which contains the Clerk user ID
-  return await userByExternalId(ctx, identity.subject);
+  
+  // Safety check 2: ctx.auth might be undefined during navigation/auth setup
+  if (!ctx.auth) {
+    // This can happen if query is called before auth token is ready
+    // Return null gracefully instead of throwing error
+    return null;
+  }
+  
+  // Safety check 3: ctx.auth.getUserIdentity might not exist
+  if (typeof ctx.auth.getUserIdentity !== 'function') {
+    console.warn('getCurrentUser: ctx.auth.getUserIdentity is not a function');
+    return null;
+  }
+  
+  try {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      return null;
+    }
+    
+    // Safety check 4: identity.subject might be missing
+    if (!identity?.subject) {
+      console.warn('getCurrentUser: identity.subject is missing');
+      return null;
+    }
+    
+    // Use identity.subject which contains the Clerk user ID
+    return await userByExternalId(ctx, identity.subject);
+  } catch (error) {
+    // Handle auth errors gracefully (e.g., token expired, invalid token, ctx.auth undefined)
+    // Don't log if it's just "not authenticated" - that's expected
+    if (error instanceof Error && !error.message.includes('not authenticated')) {
+      console.error('Error getting user identity:', error);
+    }
+    return null;
+  }
 }
 
 // Helper: Get user by Clerk ID (externalId)

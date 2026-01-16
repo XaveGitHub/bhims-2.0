@@ -8,7 +8,15 @@
  * @module
  */
 
+import type * as barangayOfficials from "../barangayOfficials.js";
+import type * as documentRequestItems from "../documentRequestItems.js";
+import type * as documentRequests from "../documentRequests.js";
+import type * as documentTypes from "../documentTypes.js";
 import type * as http from "../http.js";
+import type * as kiosk from "../kiosk.js";
+import type * as queue from "../queue.js";
+import type * as residents from "../residents.js";
+import type * as statistics from "../statistics.js";
 import type * as users from "../users.js";
 
 import type {
@@ -18,7 +26,15 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  barangayOfficials: typeof barangayOfficials;
+  documentRequestItems: typeof documentRequestItems;
+  documentRequests: typeof documentRequests;
+  documentTypes: typeof documentTypes;
   http: typeof http;
+  kiosk: typeof kiosk;
+  queue: typeof queue;
+  residents: typeof residents;
+  statistics: typeof statistics;
   users: typeof users;
 }>;
 

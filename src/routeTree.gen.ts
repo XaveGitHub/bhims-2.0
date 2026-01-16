@@ -9,12 +9,33 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as QueueDisplayRouteImport } from './routes/queue-display'
+import { Route as PendingApprovalRouteImport } from './routes/pending-approval'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as KioskRouteImport } from './routes/kiosk'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as StaffQueueRouteImport } from './routes/staff/queue'
+import { Route as AdminDashboardRouteImport } from './routes/admin/dashboard'
+import { Route as StaffProcessRequestIdRouteImport } from './routes/staff/process.$requestId'
 
+const QueueDisplayRoute = QueueDisplayRouteImport.update({
+  id: '/queue-display',
+  path: '/queue-display',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PendingApprovalRoute = PendingApprovalRouteImport.update({
+  id: '/pending-approval',
+  path: '/pending-approval',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KioskRoute = KioskRouteImport.update({
+  id: '/kiosk',
+  path: '/kiosk',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -22,40 +43,125 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StaffQueueRoute = StaffQueueRouteImport.update({
+  id: '/staff/queue',
+  path: '/staff/queue',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminDashboardRoute = AdminDashboardRouteImport.update({
+  id: '/admin/dashboard',
+  path: '/admin/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StaffProcessRequestIdRoute = StaffProcessRequestIdRouteImport.update({
+  id: '/staff/process/$requestId',
+  path: '/staff/process/$requestId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/kiosk': typeof KioskRoute
   '/login': typeof LoginRoute
+  '/pending-approval': typeof PendingApprovalRoute
+  '/queue-display': typeof QueueDisplayRoute
+  '/admin/dashboard': typeof AdminDashboardRoute
+  '/staff/queue': typeof StaffQueueRoute
+  '/staff/process/$requestId': typeof StaffProcessRequestIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/kiosk': typeof KioskRoute
   '/login': typeof LoginRoute
+  '/pending-approval': typeof PendingApprovalRoute
+  '/queue-display': typeof QueueDisplayRoute
+  '/admin/dashboard': typeof AdminDashboardRoute
+  '/staff/queue': typeof StaffQueueRoute
+  '/staff/process/$requestId': typeof StaffProcessRequestIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/kiosk': typeof KioskRoute
   '/login': typeof LoginRoute
+  '/pending-approval': typeof PendingApprovalRoute
+  '/queue-display': typeof QueueDisplayRoute
+  '/admin/dashboard': typeof AdminDashboardRoute
+  '/staff/queue': typeof StaffQueueRoute
+  '/staff/process/$requestId': typeof StaffProcessRequestIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login'
+  fullPaths:
+    | '/'
+    | '/kiosk'
+    | '/login'
+    | '/pending-approval'
+    | '/queue-display'
+    | '/admin/dashboard'
+    | '/staff/queue'
+    | '/staff/process/$requestId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login'
-  id: '__root__' | '/' | '/login'
+  to:
+    | '/'
+    | '/kiosk'
+    | '/login'
+    | '/pending-approval'
+    | '/queue-display'
+    | '/admin/dashboard'
+    | '/staff/queue'
+    | '/staff/process/$requestId'
+  id:
+    | '__root__'
+    | '/'
+    | '/kiosk'
+    | '/login'
+    | '/pending-approval'
+    | '/queue-display'
+    | '/admin/dashboard'
+    | '/staff/queue'
+    | '/staff/process/$requestId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  KioskRoute: typeof KioskRoute
   LoginRoute: typeof LoginRoute
+  PendingApprovalRoute: typeof PendingApprovalRoute
+  QueueDisplayRoute: typeof QueueDisplayRoute
+  AdminDashboardRoute: typeof AdminDashboardRoute
+  StaffQueueRoute: typeof StaffQueueRoute
+  StaffProcessRequestIdRoute: typeof StaffProcessRequestIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/queue-display': {
+      id: '/queue-display'
+      path: '/queue-display'
+      fullPath: '/queue-display'
+      preLoaderRoute: typeof QueueDisplayRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pending-approval': {
+      id: '/pending-approval'
+      path: '/pending-approval'
+      fullPath: '/pending-approval'
+      preLoaderRoute: typeof PendingApprovalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/kiosk': {
+      id: '/kiosk'
+      path: '/kiosk'
+      fullPath: '/kiosk'
+      preLoaderRoute: typeof KioskRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -65,12 +171,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/staff/queue': {
+      id: '/staff/queue'
+      path: '/staff/queue'
+      fullPath: '/staff/queue'
+      preLoaderRoute: typeof StaffQueueRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/dashboard': {
+      id: '/admin/dashboard'
+      path: '/admin/dashboard'
+      fullPath: '/admin/dashboard'
+      preLoaderRoute: typeof AdminDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/staff/process/$requestId': {
+      id: '/staff/process/$requestId'
+      path: '/staff/process/$requestId'
+      fullPath: '/staff/process/$requestId'
+      preLoaderRoute: typeof StaffProcessRequestIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  KioskRoute: KioskRoute,
   LoginRoute: LoginRoute,
+  PendingApprovalRoute: PendingApprovalRoute,
+  QueueDisplayRoute: QueueDisplayRoute,
+  AdminDashboardRoute: AdminDashboardRoute,
+  StaffQueueRoute: StaffQueueRoute,
+  StaffProcessRequestIdRoute: StaffProcessRequestIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
