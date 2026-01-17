@@ -34,24 +34,11 @@ const certificateItemSchema = z.object({
   purpose: z.string(),
 })
 
-const lookupFormSchema = z.object({
-  residentId: z.string().min(1, 'Resident ID is required'),
-  certificates: z
-    .array(certificateItemSchema)
-    .min(1, 'Please select at least one certificate type')
-    .refine(
-      (items) => {
-        // This will be validated dynamically based on documentType requirements
-        return items.length > 0
-      },
-      { message: 'Please select at least one certificate type' }
-    ),
-})
-
 function KioskPage() {
   const [mode, setMode] = useState<Mode>('select')
   const [queueNumber, setQueueNumber] = useState<string | null>(null)
   const [manualStep, setManualStep] = useState<1 | 2>(1)
+  const [lookupStep, setLookupStep] = useState<1 | 2>(1) // Add lookup step state
   const [searchResidentId, setSearchResidentId] = useState<string>('') // Only query when this is set
   const residentIdInputRef = useRef<HTMLInputElement>(null)
 
@@ -59,17 +46,16 @@ function KioskPage() {
   const activeDocumentTypes = useQuery(api.documentTypes.getActive)
   const submitRequest = useMutation(api.kiosk.submitRequest)
 
-  // Lookup Form
+  // Lookup Form (Step 1: Resident ID only)
   const lookupForm = useForm({
     defaultValues: {
       residentId: '',
-      certificates: [] as Array<{ documentTypeId: string; purpose: string }>,
-    },
-    validators: {
-      onSubmit: lookupFormSchema,
     },
     onSubmit: async () => {
-      // Submit will be handled separately in handleLookupSubmit
+      // Move to step 2 after resident is found
+      if (resident && resident._id) {
+        setLookupStep(2)
+      }
     },
   })
 
@@ -164,9 +150,11 @@ function KioskPage() {
     guestForm.reset()
     certificateForm.reset()
     setManualStep(1)
+    setLookupStep(1)
+    setSearchResidentId('') // Reset search when mode changes
   }, [mode])
 
-  // Calculate total price
+  // Calculate total price (for both lookup and manual flows)
   const totalPrice =
     activeDocumentTypes?.reduce((total, docType) => {
       const cert = certificateForm.state.values.certificates.find(
@@ -179,37 +167,28 @@ function KioskPage() {
     }, 0) || 0
 
   const handleLookupSubmit = async () => {
-    await lookupForm.handleSubmit()
-    if (!lookupForm.state.isValid) return
+    // Validate certificate form
+    await certificateForm.handleSubmit()
+    if (!certificateForm.state.isValid) return
 
     // Check if resident was searched and found
-    if (!searchResidentId) {
+    if (!searchResidentId || !resident || !resident._id) {
       toast.error('Please search for a resident first')
       return
     }
 
-    // Check if query is still loading
-    if (shouldQuery && resident === undefined) {
-      toast.error('Please wait while we search for the resident...')
-      return
-    }
-
-    if (resident === null || !resident?._id) {
-      toast.error('Resident not found. Please check the Resident ID and try again.')
-      return
-    }
-
-    // Validate certificates with document type requirements
-    const selectedCertificates = lookupForm.state.values.certificates
-    if (selectedCertificates.length === 0) {
-      return
-    }
-
     // Validate purposes for certificates that require them
+    const selectedCertificates = certificateForm.state.values.certificates
+    if (selectedCertificates.length === 0) {
+      toast.error('Please select at least one certificate type')
+      return
+    }
+
     for (const cert of selectedCertificates) {
       const docType = activeDocumentTypes?.find((dt) => dt._id === cert.documentTypeId)
       if (docType?.requiresPurpose && !cert.purpose.trim()) {
-        return // Error will be shown in UI
+        toast.error(`Purpose is required for ${docType.name}`)
+        return
       }
     }
 
@@ -218,11 +197,6 @@ function KioskPage() {
         documentTypeId: cert.documentTypeId as any,
         purpose: cert.purpose.trim(),
       }))
-
-      if (!resident) {
-        toast.error('Resident not found. Please check the Resident ID and try again.')
-        return
-      }
 
       const result = await submitRequest({
         residentId: resident._id,
@@ -235,6 +209,8 @@ function KioskPage() {
       setTimeout(() => {
         setQueueNumber(null)
         lookupForm.reset()
+        certificateForm.reset()
+        setLookupStep(1)
         setSearchResidentId('') // Reset search
         if (residentIdInputRef.current) {
           residentIdInputRef.current.focus()
@@ -304,6 +280,8 @@ function KioskPage() {
     guestForm.reset()
     certificateForm.reset()
     setManualStep(1)
+    setLookupStep(1)
+    setSearchResidentId('')
   }
 
   // Calculate age from birthdate
@@ -418,225 +396,283 @@ function KioskPage() {
             <CardHeader>
               <CardTitle>Resident ID Lookup</CardTitle>
               <CardDescription>
-                Scan barcode or manually enter your Resident ID (BH-00001)
+                {lookupStep === 1
+                  ? 'Scan barcode or manually enter your Resident ID (BH-00001)'
+                  : 'Select certificate types'}
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form
-                id="lookup-form"
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  handleSearch() // Search on Enter key
-                }}
-              >
-                <FieldGroup>
-                  {/* Resident ID Input */}
-                  <lookupForm.Field
-                    name="residentId"
-                    validators={{
-                      onChange: ({ value }) => {
-                        const trimmed = value.trim().toUpperCase()
-                        if (!trimmed) {
-                          return undefined // Don't show error while typing
-                        }
-                        // Only validate format if user has typed enough characters
-                        if (trimmed.length >= 3 && !/^BH-\d+$/.test(trimmed)) {
-                          return { message: 'Invalid format. Use BH-00001 format' }
-                        }
-                        return undefined
-                      },
-                      onBlur: ({ value }) => {
-                        const trimmed = value.trim().toUpperCase()
-                        if (!trimmed) {
-                          return { message: 'Resident ID is required' }
-                        }
-                        if (!/^BH-\d+$/.test(trimmed)) {
-                          return { message: 'Invalid format. Use BH-00001 format' }
-                        }
-                        if (trimmed.length < 7) { // BH-00001 is 7 characters minimum
-                          return { message: 'Invalid format. Use BH-00001 format' }
-                        }
-                        return undefined
-                      },
-                    }}
-                    children={(field) => {
-                      const fieldValue = field.state.value.trim().toUpperCase()
-                      const fieldIsValidFormat = /^BH-\d+$/.test(fieldValue) && fieldValue.length >= 7
-                      const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
-                      const showFormatError = fieldValue && !fieldIsValidFormat && fieldValue.length >= 3 && field.state.meta.isTouched
-                      
-                      return (
-                        <Field data-invalid={isInvalid}>
-                          <FieldLabel htmlFor={field.name}>Resident ID</FieldLabel>
-                          <div className="flex gap-2">
-                            <Input
-                              id={field.name}
-                              ref={residentIdInputRef}
-                              name={field.name}
-                              value={field.state.value}
-                              onBlur={field.handleBlur}
-                              onChange={(e) => {
-                                field.handleChange(e.target.value.toUpperCase())
-                                setSearchResidentId('') // Clear search result when typing
-                              }}
-                              placeholder="BH-00001"
-                              className="text-xl text-center h-14 font-mono flex-1"
-                              autoFocus
-                              aria-invalid={isInvalid}
-                            />
-                            <Button
-                              type="button"
-                              onClick={handleSearch}
-                              disabled={!fieldIsValidFormat}
-                              className="h-14 px-6"
-                            >
-                              <ScanLine className="w-5 h-5 mr-2" />
-                              Search
-                            </Button>
-                          </div>
-                          {isInvalid && <FieldError errors={field.state.meta.errors} />}
-                          {showFormatError && !isInvalid && (
-                            <p className="text-sm text-amber-600 font-medium mt-1">Invalid format. Use BH-00001 format</p>
-                          )}
-                          {shouldQuery && resident === null && (
-                            <p className="text-sm text-red-600 font-medium mt-1">Resident not found</p>
-                          )}
-                        </Field>
-                      )
-                    }}
-                  />
-
-                  {/* Loading State - Centered Spinner */}
-                  {shouldQuery && resident === undefined && (
-                    <div className="flex items-center justify-center py-16">
-                      <Loader2 className="w-16 h-16 animate-spin" />
-                    </div>
-                  )}
-
-                  {/* Resident Info Display - Only show if resident was found */}
-                  {resident && (
-                    <Card className="bg-blue-50">
-                      <CardHeader>
-                        <CardTitle className="text-lg">Resident Information</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-2">
-                        <div>
-                          <span className="font-semibold">Name:</span>{' '}
-                          {resident.firstName} {resident.middleName} {resident.lastName}
-                          {(resident as any).suffix && ` ${(resident as any).suffix}`}
-                        </div>
-                        <div>
-                          <span className="font-semibold">Purok:</span> {resident.purok}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* Certificate Selection */}
-                  {resident && activeDocumentTypes && (
+              {lookupStep === 1 ? (
+                // STEP 1: Resident ID Lookup
+                <form
+                  id="lookup-form"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    handleSearch() // Search on Enter key
+                  }}
+                >
+                  <FieldGroup>
+                    {/* Resident ID Input */}
                     <lookupForm.Field
-                      name="certificates"
-                      mode="array"
+                      name="residentId"
+                      validators={{
+                        onChange: ({ value }) => {
+                          const trimmed = value.trim().toUpperCase()
+                          if (!trimmed) {
+                            return undefined // Don't show error while typing
+                          }
+                          // Only validate format if user has typed enough characters
+                          if (trimmed.length >= 3 && !/^BH-\d+$/.test(trimmed)) {
+                            return { message: 'Invalid format. Use BH-00001 format' }
+                          }
+                          return undefined
+                        },
+                        onBlur: ({ value }) => {
+                          const trimmed = value.trim().toUpperCase()
+                          if (!trimmed) {
+                            return { message: 'Resident ID is required' }
+                          }
+                          if (!/^BH-\d+$/.test(trimmed)) {
+                            return { message: 'Invalid format. Use BH-00001 format' }
+                          }
+                          if (trimmed.length < 7) { // BH-00001 is 7 characters minimum
+                            return { message: 'Invalid format. Use BH-00001 format' }
+                          }
+                          return undefined
+                        },
+                      }}
                       children={(field) => {
-                        const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
+                        const fieldValue = field.state.value.trim().toUpperCase()
+                        const fieldIsValidFormat = /^BH-\d+$/.test(fieldValue) && fieldValue.length >= 7
+                        const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                        const showFormatError = fieldValue && !fieldIsValidFormat && fieldValue.length >= 3 && field.state.meta.isTouched
+                        
                         return (
-                          <FieldSet>
-                            <FieldLegend variant="label">Select Certificate Types</FieldLegend>
+                          <Field data-invalid={isInvalid}>
+                            <FieldLabel htmlFor={field.name}>Resident ID</FieldLabel>
+                            <div className="flex gap-2">
+                              <Input
+                                id={field.name}
+                                ref={residentIdInputRef}
+                                name={field.name}
+                                value={field.state.value}
+                                onBlur={field.handleBlur}
+                                onChange={(e) => {
+                                  field.handleChange(e.target.value.toUpperCase())
+                                  setSearchResidentId('') // Clear search result when typing
+                                }}
+                                placeholder="BH-00001"
+                                className="text-xl text-center h-14 font-mono flex-1"
+                                autoFocus
+                                aria-invalid={isInvalid}
+                              />
+                              <Button
+                                type="button"
+                                onClick={handleSearch}
+                                disabled={!fieldIsValidFormat}
+                                className="h-14 px-6"
+                              >
+                                <ScanLine className="w-5 h-5 mr-2" />
+                                Search
+                              </Button>
+                            </div>
                             {isInvalid && <FieldError errors={field.state.meta.errors} />}
-                            <FieldGroup data-slot="checkbox-group" className="space-y-3">
-                              {activeDocumentTypes.map((docType) => {
-                                const certIndex = field.state.value.findIndex(
-                                  (c: any) => c.documentTypeId === docType._id
-                                )
-                                const isChecked = certIndex !== -1
-                                const cert = isChecked ? field.state.value[certIndex] : null
-
-                                return (
-                                  <div key={docType._id} className="flex items-start space-x-3">
-                                    <Checkbox
-                                      id={`cert-${docType._id}`}
-                                      checked={isChecked}
-                                      onCheckedChange={(checked) => {
-                                        const currentCerts = [...field.state.value]
-                                        if (checked) {
-                                          currentCerts.push({
-                                            documentTypeId: docType._id,
-                                            purpose: '',
-                                          })
-                                        } else {
-                                          currentCerts.splice(certIndex, 1)
-                                        }
-                                        field.handleChange(currentCerts)
-                                      }}
-                                    />
-                                    <div className="flex-1">
-                                      <label
-                                        htmlFor={`cert-${docType._id}`}
-                                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                                      >
-                                        {docType.name}
-                                      </label>
-                                      {docType.requiresPurpose && isChecked && (
-                                        <Textarea
-                                          placeholder="Purpose (required)"
-                                          value={cert?.purpose || ''}
-                                          onChange={(e) => {
-                                            const updatedCerts = [...field.state.value]
-                                            updatedCerts[certIndex] = {
-                                              ...updatedCerts[certIndex],
-                                              purpose: e.target.value,
-                                            }
-                                            field.handleChange(updatedCerts)
-                                          }}
-                                          className="mt-2"
-                                        />
-                                      )}
-                                    </div>
-                                    <div className="text-sm font-semibold">
-                                      ₱{(docType.price / 100).toFixed(2)}
-                                    </div>
-                                  </div>
-                                )
-                              })}
-                            </FieldGroup>
-                          </FieldSet>
+                            {showFormatError && !isInvalid && (
+                              <p className="text-sm text-amber-600 font-medium mt-1">Invalid format. Use BH-00001 format</p>
+                            )}
+                            {shouldQuery && resident === null && (
+                              <p className="text-sm text-red-600 font-medium mt-1">Resident not found</p>
+                            )}
+                          </Field>
                         )
                       }}
                     />
-                  )}
 
+                    {/* Loading State - Centered Spinner */}
+                    {shouldQuery && resident === undefined && (
+                      <div className="flex items-center justify-center py-16">
+                        <Loader2 className="w-16 h-16 animate-spin" />
+                      </div>
+                    )}
 
-                  {/* Total Price */}
-                  {lookupForm.state.values.certificates.length > 0 && (
-                    <div className="bg-blue-50 rounded-lg p-4 text-center">
-                      <p className="text-sm text-gray-600">Total Amount</p>
-                      <p className="text-3xl font-bold text-blue-600">
-                        ₱{(totalPrice / 100).toFixed(2)}
-                      </p>
+                    {/* Resident Info Display - Clickable card to proceed */}
+                    {resident && (
+                      <Card 
+                        className="bg-blue-50 cursor-pointer hover:bg-blue-100 transition-colors border-2 border-blue-200"
+                        onClick={() => setLookupStep(2)}
+                      >
+                        <CardHeader>
+                          <CardTitle className="text-lg flex items-center justify-between">
+                            <span>Resident Information</span>
+                            <span className="text-sm font-normal text-blue-600">Click to continue</span>
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-2">
+                          <div>
+                            <span className="font-semibold">Resident ID:</span> {resident.residentId}
+                          </div>
+                          <div>
+                            <span className="font-semibold">Name:</span>{' '}
+                            {resident.firstName} {resident.middleName} {resident.lastName}
+                            {(resident as any).suffix && ` ${(resident as any).suffix}`}
+                          </div>
+                          <div>
+                            <span className="font-semibold">Purok:</span> {resident.purok}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </FieldGroup>
+                </form>
+              ) : (
+                // STEP 2: Certificate Selection
+                <form
+                  id="certificate-form"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    handleLookupSubmit()
+                  }}
+                >
+                  <FieldGroup>
+                    {/* Resident Info Reminder */}
+                    {resident && (
+                      <Card className="bg-blue-50 mb-6">
+                        <CardContent className="pt-4">
+                          <div className="space-y-1 text-sm">
+                            <p className="text-gray-700">
+                              <span className="font-semibold">Resident ID:</span> {resident.residentId}
+                            </p>
+                            <p className="text-gray-700">
+                              <span className="font-semibold">Name:</span>{' '}
+                              {resident.firstName} {resident.middleName} {resident.lastName}
+                              {(resident as any).suffix && ` ${(resident as any).suffix}`}
+                            </p>
+                            <p className="text-gray-700">
+                              <span className="font-semibold">Purok:</span> {resident.purok}
+                            </p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Certificate Selection */}
+                    {activeDocumentTypes && (
+                      <certificateForm.Field
+                        name="certificates"
+                        mode="array"
+                        children={(field) => {
+                          const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
+                          return (
+                            <FieldSet>
+                              <FieldLegend variant="label">Select Certificate Types</FieldLegend>
+                              {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                              <FieldGroup data-slot="checkbox-group" className="space-y-4 mt-4">
+                                {activeDocumentTypes.map((docType) => {
+                                  const certIndex = field.state.value.findIndex(
+                                    (c: any) => c.documentTypeId === docType._id
+                                  )
+                                  const isChecked = certIndex !== -1
+                                  const cert = isChecked ? field.state.value[certIndex] : null
+
+                                  return (
+                                    <div 
+                                      key={docType._id} 
+                                      className="flex items-start gap-4 p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                                    >
+                                      <Checkbox
+                                        id={`cert-${docType._id}`}
+                                        checked={isChecked}
+                                        onCheckedChange={(checked) => {
+                                          const currentCerts = [...field.state.value]
+                                          if (checked) {
+                                            currentCerts.push({
+                                              documentTypeId: docType._id,
+                                              purpose: '',
+                                            })
+                                          } else {
+                                            currentCerts.splice(certIndex, 1)
+                                          }
+                                          field.handleChange(currentCerts)
+                                        }}
+                                        className="mt-1"
+                                      />
+                                      <div className="flex-1 min-w-0">
+                                        <label
+                                          htmlFor={`cert-${docType._id}`}
+                                          className="text-base font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer block mb-1"
+                                        >
+                                          {docType.name}
+                                        </label>
+                                        {docType.requiresPurpose && isChecked && (
+                                          <Textarea
+                                            placeholder="Enter purpose (required)"
+                                            value={cert?.purpose || ''}
+                                            onChange={(e) => {
+                                              const updatedCerts = [...field.state.value]
+                                              updatedCerts[certIndex] = {
+                                                ...updatedCerts[certIndex],
+                                                purpose: e.target.value,
+                                              }
+                                              field.handleChange(updatedCerts)
+                                            }}
+                                            className="mt-2"
+                                            rows={2}
+                                          />
+                                        )}
+                                      </div>
+                                      <div className="text-lg font-bold text-blue-600 whitespace-nowrap">
+                                        ₱{(docType.price / 100).toFixed(2)}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </FieldGroup>
+                            </FieldSet>
+                          )
+                        }}
+                      />
+                    )}
+
+                    {/* Total Price */}
+                    {certificateForm.state.values.certificates.length > 0 && (
+                      <div className="bg-blue-50 rounded-lg p-6 text-center border-2 border-blue-200">
+                        <p className="text-sm text-gray-600 mb-1">Total Amount</p>
+                        <p className="text-4xl font-bold text-blue-600">
+                          ₱{(totalPrice / 100).toFixed(2)}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Action Buttons - Back and Submit side by side */}
+                    <div className="flex gap-4 mt-6">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="lg"
+                        onClick={() => setLookupStep(1)}
+                        className="flex-1"
+                      >
+                        Back
+                      </Button>
+                      <Button
+                        type="submit"
+                        size="lg"
+                        className="flex-1"
+                        disabled={certificateForm.state.values.certificates.length === 0}
+                      >
+                        {certificateForm.state.isSubmitting ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Submitting...
+                          </>
+                        ) : (
+                          'Submit Request'
+                        )}
+                      </Button>
                     </div>
-                  )}
-
-                  {/* Submit Button */}
-                  {resident && (
-                    <Button
-                      type="button"
-                      onClick={handleLookupSubmit}
-                      size="lg"
-                      className="w-full"
-                      disabled={lookupForm.state.values.certificates.length === 0}
-                    >
-                      {lookupForm.state.isSubmitting ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Submitting...
-                        </>
-                      ) : (
-                        'Submit Request'
-                      )}
-                    </Button>
-                  )}
-                </FieldGroup>
-              </form>
+                  </FieldGroup>
+                </form>
+              )}
             </CardContent>
           </Card>
         )}
