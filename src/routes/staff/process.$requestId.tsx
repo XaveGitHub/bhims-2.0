@@ -298,22 +298,23 @@ function StaffProcessContent() {
                         />
                       </div>
                       <div>
+                        <Label htmlFor="suffix">Suffix (Optional)</Label>
+                        <Input
+                          id="suffix"
+                          placeholder="e.g., Jr., Sr., III"
+                          value={residentData.suffix || ''}
+                          onChange={(e) =>
+                            setResidentData({ ...residentData, suffix: e.target.value })
+                          }
+                        />
+                      </div>
+                      <div>
                         <Label htmlFor="residentId">Resident ID</Label>
                         <Input
                           id="residentId"
                           value={residentData.residentId || ''}
                           disabled
                           className="bg-gray-50"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="zone">Zone</Label>
-                        <Input
-                          id="zone"
-                          value={residentData.zone || ''}
-                          onChange={(e) =>
-                            setResidentData({ ...residentData, zone: e.target.value })
-                          }
                         />
                       </div>
                       <div>
@@ -327,14 +328,20 @@ function StaffProcessContent() {
                         />
                       </div>
                       <div>
-                        <Label htmlFor="address">Address</Label>
-                        <Input
-                          id="address"
-                          value={residentData.address || ''}
+                        <Label htmlFor="seniorOrPwd">Senior or PWD</Label>
+                        <select
+                          id="seniorOrPwd"
+                          value={residentData.seniorOrPwd || 'none'}
                           onChange={(e) =>
-                            setResidentData({ ...residentData, address: e.target.value })
+                            setResidentData({ ...residentData, seniorOrPwd: e.target.value })
                           }
-                        />
+                          className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <option value="none">None</option>
+                          <option value="senior">Senior</option>
+                          <option value="pwd">PWD</option>
+                          <option value="both">Both (Senior & PWD)</option>
+                        </select>
                       </div>
                       <div>
                         <Label htmlFor="birthdate">Birthdate</Label>
@@ -509,12 +516,13 @@ function StaffProcessContent() {
                           <p>
                             <strong>Name:</strong>{' '}
                             {`${residentData.firstName || ''} ${residentData.middleName || ''} ${residentData.lastName || ''}`.trim()}
+                            {residentData.suffix && ` ${residentData.suffix}`}
                           </p>
                           <p>
-                            <strong>Address:</strong> {residentData.address || 'N/A'}
+                            <strong>Purok:</strong> {residentData.purok || 'N/A'}
                           </p>
                           <p>
-                            <strong>Zone:</strong> {residentData.zone || 'N/A'}
+                            <strong>Senior/PWD:</strong> {residentData.seniorOrPwd === 'none' ? 'None' : residentData.seniorOrPwd === 'both' ? 'Both (Senior & PWD)' : residentData.seniorOrPwd || 'None'}
                           </p>
                           <p>
                             <strong>Purpose:</strong> {purposeValues[selectedItem._id] || 'N/A'}

@@ -24,12 +24,16 @@ export const submitRequest = mutation({
         firstName: v.string(),
         middleName: v.string(),
         lastName: v.string(),
+        suffix: v.optional(v.string()),
         sex: v.union(v.literal("male"), v.literal("female"), v.literal("other")),
         birthdate: v.number(),
-        zone: v.string(),
         purok: v.string(),
-        address: v.string(),
-        disability: v.boolean(),
+        seniorOrPwd: v.union(
+          v.literal("none"),
+          v.literal("senior"),
+          v.literal("pwd"),
+          v.literal("both")
+        ),
       })
     ),
     
@@ -54,12 +58,11 @@ export const submitRequest = mutation({
         firstName: args.guestResident.firstName,
         middleName: args.guestResident.middleName,
         lastName: args.guestResident.lastName,
+        suffix: args.guestResident.suffix,
         sex: args.guestResident.sex,
         birthdate: args.guestResident.birthdate,
-        zone: args.guestResident.zone,
         purok: args.guestResident.purok,
-        address: args.guestResident.address,
-        disability: args.guestResident.disability,
+        seniorOrPwd: args.guestResident.seniorOrPwd,
         status: "pending", // Guest record
         createdAt: Date.now(),
         updatedAt: Date.now(),

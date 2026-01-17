@@ -39,9 +39,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Users, BarChart3, Clock, Search, Plus, MoreVertical, Edit, Trash2, Eye, Upload, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Users, BarChart3, Clock, Search, Plus, MoreVertical, Edit, Trash2, Eye, Upload, ChevronLeft, ChevronRight, Save } from 'lucide-react'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useForm } from '@tanstack/react-form'
+import { format } from 'date-fns'
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from '@/components/ui/field'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 
 export const Route = createFileRoute('/admin/dashboard')({
   component: AdminDashboardPage,
@@ -214,11 +223,14 @@ function ResidentsManagementSection() {
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [zoneFilter, setZoneFilter] = useState<string>('all')
-  const [genderFilter, setGenderFilter] = useState<string>('all') // ✅ NEW: Gender filter
+  const [genderFilter, setGenderFilter] = useState<string>('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [residentToDelete, setResidentToDelete] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [residentToEdit, setResidentToEdit] = useState<Doc<'residents'> | null>(null)
 
   const PAGE_SIZE = 50 // ✅ OPTIMIZED: 50 records per page
 
@@ -234,19 +246,18 @@ function ResidentsManagementSection() {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [statusFilter, zoneFilter, genderFilter])
+  }, [statusFilter, genderFilter])
 
   const shouldSkipQuery = !authLoaded || !isSignedIn
   const offset = (currentPage - 1) * PAGE_SIZE
 
-  // ✅ OPTIMIZED: Query residents with all filters (server-side: status, zone, gender)
+  // ✅ OPTIMIZED: Query residents with all filters (server-side: status, gender)
   const residents = useQuery(
     api.residents.list,
     shouldSkipQuery
       ? 'skip'
       : {
           status: statusFilter !== 'all' ? (statusFilter as any) : undefined,
-          zone: zoneFilter !== 'all' ? zoneFilter : undefined,
           gender: genderFilter !== 'all' ? (genderFilter as any) : undefined,
           limit: PAGE_SIZE,
           offset: offset,
@@ -265,6 +276,8 @@ function ResidentsManagementSection() {
   )
 
   const deleteResident = useMutation(api.residents.remove)
+  const createResident = useMutation(api.residents.create)
+  const updateResident = useMutation(api.residents.update)
 
   // Determine which data to display
   const displayResidents = useMemo((): Doc<'residents'>[] => {
@@ -283,20 +296,18 @@ function ResidentsManagementSection() {
       if (statusFilter !== 'all') {
         filtered = filtered.filter((r: Doc<'residents'>) => r.status === statusFilter)
       }
-      if (zoneFilter !== 'all') {
-        filtered = filtered.filter((r: Doc<'residents'>) => r.zone === zoneFilter)
-      }
       return filtered
     }
     // For list queries, server-side filtering is already applied
     return displayResidents
-  }, [displayResidents, statusFilter, zoneFilter, debouncedSearchTerm])
+  }, [displayResidents, statusFilter, debouncedSearchTerm])
 
   // Calculate pagination info
   const hasMore = filteredResidents.length === PAGE_SIZE
 
   const handleDelete = async () => {
-    if (!residentToDelete) return
+    if (!residentToDelete || isDeleting) return
+    setIsDeleting(true)
     try {
       await deleteResident({ id: residentToDelete as any })
       toast.success('Resident deleted successfully')
@@ -304,6 +315,8 @@ function ResidentsManagementSection() {
       setResidentToDelete(null)
     } catch (error) {
       toast.error('Failed to delete resident')
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -339,7 +352,7 @@ function ResidentsManagementSection() {
               <Upload className="h-4 w-4 mr-2" />
               Import Excel
             </Button>
-            <Button size="sm">
+            <Button size="sm" onClick={() => setAddDialogOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />
               Add Resident
             </Button>
@@ -368,17 +381,6 @@ function ResidentsManagementSection() {
               <SelectItem value="pending">Pending</SelectItem>
               <SelectItem value="deceased">Deceased</SelectItem>
               <SelectItem value="moved">Moved</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={zoneFilter} onValueChange={setZoneFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by zone" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Zones</SelectItem>
-              {/* Zones would be dynamically loaded - placeholder for now */}
-              <SelectItem value="Zone 1">Zone 1</SelectItem>
-              <SelectItem value="Zone 2">Zone 2</SelectItem>
             </SelectContent>
           </Select>
           <Select value={genderFilter} onValueChange={setGenderFilter}>
@@ -413,7 +415,7 @@ function ResidentsManagementSection() {
                   <TableRow>
                     <TableHead>Resident ID</TableHead>
                     <TableHead>Name</TableHead>
-                    <TableHead>Zone</TableHead>
+                    <TableHead>Purok</TableHead>
                     <TableHead>Gender</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -427,8 +429,9 @@ function ResidentsManagementSection() {
                       </TableCell>
                       <TableCell>
                         {resident.firstName} {resident.middleName} {resident.lastName}
+                        {(resident as any).suffix && ` ${(resident as any).suffix}`}
                       </TableCell>
-                      <TableCell>{resident.zone}</TableCell>
+                      <TableCell>{resident.purok}</TableCell>
                       <TableCell className="capitalize">{resident.sex}</TableCell>
                       <TableCell>
                         <Badge variant={getStatusBadgeVariant(resident.status)}>
@@ -449,7 +452,12 @@ function ResidentsManagementSection() {
                               <Eye className="h-4 w-4 mr-2" />
                               View
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setResidentToEdit(resident)
+                                setEditDialogOpen(true)
+                              }}
+                            >
                               <Edit className="h-4 w-4 mr-2" />
                               Edit
                             </DropdownMenuItem>
@@ -506,8 +514,34 @@ function ResidentsManagementSection() {
           </>
         )}
 
+        {/* Add Resident Dialog */}
+        <AddResidentDialog
+          open={addDialogOpen}
+          onOpenChange={setAddDialogOpen}
+          onCreate={createResident}
+        />
+
+        {/* Edit Resident Dialog */}
+        {residentToEdit && (
+          <EditResidentDialog
+            open={editDialogOpen}
+            onOpenChange={setEditDialogOpen}
+            resident={residentToEdit}
+            onUpdate={updateResident}
+            onClose={() => setResidentToEdit(null)}
+          />
+        )}
+
         {/* Delete Confirmation Dialog */}
-        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <Dialog
+          open={deleteDialogOpen}
+          onOpenChange={(newOpen) => {
+            // Prevent closing dialog during deletion
+            if (!isDeleting) {
+              setDeleteDialogOpen(newOpen)
+            }
+          }}
+        >
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Delete Resident</DialogTitle>
@@ -516,16 +550,808 @@ function ResidentsManagementSection() {
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+              <Button
+                variant="outline"
+                onClick={() => setDeleteDialogOpen(false)}
+                disabled={isDeleting}
+              >
                 Cancel
               </Button>
-              <Button variant="destructive" onClick={handleDelete}>
-                Delete
+              <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </>
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       </CardContent>
     </Card>
+  )
+}
+
+// Helper function to calculate age from timestamp
+function calculateAge(birthdate: number): number {
+  const today = new Date()
+  const birth = new Date(birthdate)
+  let age = today.getFullYear() - birth.getFullYear()
+  const monthDiff = today.getMonth() - birth.getMonth()
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    age--
+  }
+  return age
+}
+
+// Add Resident Dialog Component
+function AddResidentDialog({
+  open,
+  onOpenChange,
+  onCreate,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onCreate: (args: any) => Promise<any>
+}) {
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const form = useForm({
+    defaultValues: {
+      firstName: '',
+      middleName: '',
+      lastName: '',
+      suffix: '',
+      sex: 'male' as 'male' | 'female' | 'other',
+      birthdate: '',
+      purok: '',
+      seniorOrPwd: 'none' as 'none' | 'senior' | 'pwd' | 'both',
+      status: 'resident' as 'resident' | 'pending' | 'deceased' | 'moved',
+    },
+    validators: {
+      onSubmit: ({ value }) => {
+        const errors: Record<string, string> = {}
+        if (!value.firstName?.trim()) errors.firstName = 'First name is required'
+        if (!value.lastName?.trim()) errors.lastName = 'Last name is required'
+        if (!value.birthdate) errors.birthdate = 'Birthdate is required'
+        if (!value.purok?.trim()) errors.purok = 'Purok is required'
+        return Object.keys(errors).length > 0 ? errors : undefined
+      },
+    },
+    onSubmit: async ({ value }) => {
+      if (isSubmitting) return
+      setIsSubmitting(true)
+      try {
+        const birthdateTimestamp = new Date(value.birthdate).getTime()
+        await onCreate({
+          firstName: value.firstName,
+          middleName: value.middleName,
+          lastName: value.lastName,
+          suffix: value.suffix || undefined,
+          sex: value.sex,
+          birthdate: birthdateTimestamp,
+          purok: value.purok,
+          seniorOrPwd: value.seniorOrPwd,
+          status: value.status,
+        })
+        toast.success('Resident created successfully')
+        form.reset()
+        // Close dialog after successful creation
+        setTimeout(() => {
+          onOpenChange(false)
+        }, 100)
+      } catch (error: any) {
+        toast.error(error.message || 'Failed to create resident')
+      } finally {
+        setIsSubmitting(false)
+      }
+    },
+  })
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(newOpen) => {
+        // Prevent closing dialog during submission
+        if (!form.state.isSubmitting) {
+          onOpenChange(newOpen)
+        }
+      }}
+    >
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Add New Resident</DialogTitle>
+          <DialogDescription>
+            Fill in all required fields to create a new resident record.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            form.handleSubmit()
+          }}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+            {/* First Name */}
+            <form.Field
+              name="firstName"
+              validators={{
+                onChange: ({ value }) => {
+                  if (!value?.trim()) {
+                    return { message: 'First name is required' }
+                  }
+                  return undefined
+                },
+              }}
+              children={(field) => {
+                const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel htmlFor={field.name}>
+                      First Name <span className="text-red-500">*</span>
+                    </FieldLabel>
+                    <Input
+                      id={field.name}
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      aria-invalid={isInvalid}
+                    />
+                    {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                  </Field>
+                )
+              }}
+            />
+
+            {/* Middle Name */}
+            <form.Field
+              name="middleName"
+              children={(field) => (
+                <Field>
+                  <FieldLabel htmlFor={field.name}>Middle Name</FieldLabel>
+                  <Input
+                    id={field.name}
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                  />
+                </Field>
+              )}
+            />
+
+            {/* Last Name */}
+            <form.Field
+              name="lastName"
+              validators={{
+                onChange: ({ value }) => {
+                  if (!value?.trim()) {
+                    return { message: 'Last name is required' }
+                  }
+                  return undefined
+                },
+              }}
+              children={(field) => {
+                const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel htmlFor={field.name}>
+                      Last Name <span className="text-red-500">*</span>
+                    </FieldLabel>
+                    <Input
+                      id={field.name}
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      aria-invalid={isInvalid}
+                    />
+                    {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                  </Field>
+                )
+              }}
+            />
+
+            {/* Suffix */}
+            <form.Field
+              name="suffix"
+              children={(field) => (
+                <Field>
+                  <FieldLabel htmlFor={field.name}>Suffix (Optional)</FieldLabel>
+                  <select
+                    id={field.name}
+                    value={field.state.value || ''}
+                    onBlur={field.handleBlur}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      field.handleChange(value === '' ? '' : value)
+                    }}
+                    className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="">None</option>
+                    <option value="Jr.">Jr.</option>
+                    <option value="Sr.">Sr.</option>
+                    <option value="II">II</option>
+                    <option value="III">III</option>
+                    <option value="IV">IV</option>
+                    <option value="V">V</option>
+                  </select>
+                </Field>
+              )}
+            />
+
+            {/* Birthdate */}
+            <form.Field
+              name="birthdate"
+              validators={{
+                onChange: ({ value }) => {
+                  if (!value) {
+                    return { message: 'Birthdate is required' }
+                  }
+                  return undefined
+                },
+              }}
+              children={(field) => {
+                const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel htmlFor={field.name}>
+                      Birthdate <span className="text-red-500">*</span>
+                    </FieldLabel>
+                    <Input
+                      id={field.name}
+                      type="date"
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      max={new Date().toISOString().split('T')[0]}
+                      aria-invalid={isInvalid}
+                    />
+                    {field.state.value && (
+                      <FieldDescription>
+                        Age: {calculateAge(new Date(field.state.value).getTime())} years old
+                      </FieldDescription>
+                    )}
+                    {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                  </Field>
+                )
+              }}
+            />
+
+            {/* Sex */}
+            <form.Field
+              name="sex"
+              validators={{
+                onChange: ({ value }) => {
+                  if (!value || (value !== 'male' && value !== 'female' && value !== 'other')) {
+                    return { message: 'Gender is required' }
+                  }
+                  return undefined
+                },
+              }}
+              children={(field) => {
+                const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel>
+                      Gender <span className="text-red-500">*</span>
+                    </FieldLabel>
+                    <RadioGroup
+                      value={field.state.value}
+                      onValueChange={(value) => field.handleChange(value as any)}
+                      className="flex gap-6 mt-2"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="male" id="sex-male" />
+                        <FieldLabel htmlFor="sex-male" className="cursor-pointer">Male</FieldLabel>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="female" id="sex-female" />
+                        <FieldLabel htmlFor="sex-female" className="cursor-pointer">Female</FieldLabel>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="other" id="sex-other" />
+                        <FieldLabel htmlFor="sex-other" className="cursor-pointer">Other</FieldLabel>
+                      </div>
+                    </RadioGroup>
+                    {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                  </Field>
+                )
+              }}
+            />
+
+            {/* Purok */}
+            <form.Field
+              name="purok"
+              validators={{
+                onChange: ({ value }) => {
+                  if (!value?.trim()) {
+                    return { message: 'Purok is required' }
+                  }
+                  return undefined
+                },
+              }}
+              children={(field) => {
+                const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel htmlFor={field.name}>
+                      Purok <span className="text-red-500">*</span>
+                    </FieldLabel>
+                    <Input
+                      id={field.name}
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      aria-invalid={isInvalid}
+                    />
+                    {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                  </Field>
+                )
+              }}
+            />
+
+            {/* Status */}
+            <form.Field
+              name="status"
+              children={(field) => (
+                <Field>
+                  <FieldLabel htmlFor={field.name}>Status</FieldLabel>
+                  <Select
+                    value={field.state.value}
+                    onValueChange={(value) => field.handleChange(value as any)}
+                  >
+                    <SelectTrigger id={field.name}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="resident">Resident</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="deceased">Deceased</SelectItem>
+                      <SelectItem value="moved">Moved</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
+            />
+
+            {/* Senior or PWD */}
+            <form.Field
+              name="seniorOrPwd"
+              children={(field) => (
+                <Field>
+                  <FieldLabel htmlFor={field.name}>Senior or PWD</FieldLabel>
+                  <Select
+                    value={field.state.value}
+                    onValueChange={(value) => field.handleChange(value as any)}
+                  >
+                    <SelectTrigger id={field.name}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      <SelectItem value="senior">Senior</SelectItem>
+                      <SelectItem value="pwd">PWD</SelectItem>
+                      <SelectItem value="both">Both (Senior & PWD)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Resident
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// Edit Resident Dialog Component
+function EditResidentDialog({
+  open,
+  onOpenChange,
+  resident,
+  onUpdate,
+  onClose,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  resident: Doc<'residents'>
+  onUpdate: (args: any) => Promise<any>
+  onClose: () => void
+}) {
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const form = useForm({
+    defaultValues: {
+      firstName: resident.firstName,
+      middleName: resident.middleName,
+      lastName: resident.lastName,
+      suffix: (resident as any).suffix || '',
+      sex: resident.sex,
+      birthdate: format(new Date(resident.birthdate), 'yyyy-MM-dd'),
+      purok: resident.purok,
+      seniorOrPwd: (resident as any).seniorOrPwd || 'none',
+      status: resident.status,
+    },
+    validators: {
+      onSubmit: ({ value }) => {
+        const errors: Record<string, string> = {}
+        if (!value.firstName) errors.firstName = 'First name is required'
+        if (!value.lastName) errors.lastName = 'Last name is required'
+        if (!value.birthdate) errors.birthdate = 'Birthdate is required'
+        if (!value.purok) errors.purok = 'Purok is required'
+        return Object.keys(errors).length > 0 ? errors : undefined
+      },
+    },
+    onSubmit: async ({ value }) => {
+      if (isSubmitting) return
+      setIsSubmitting(true)
+      try {
+        const birthdateTimestamp = new Date(value.birthdate).getTime()
+        await onUpdate({
+          id: resident._id,
+          firstName: value.firstName,
+          middleName: value.middleName,
+          lastName: value.lastName,
+          suffix: value.suffix || undefined,
+          sex: value.sex,
+          birthdate: birthdateTimestamp,
+          purok: value.purok,
+          seniorOrPwd: value.seniorOrPwd,
+          status: value.status,
+        })
+        toast.success('Resident updated successfully')
+        onClose()
+        // Close dialog after successful update
+        setTimeout(() => {
+          onOpenChange(false)
+        }, 100)
+      } catch (error: any) {
+        toast.error(error.message || 'Failed to update resident')
+      } finally {
+        setIsSubmitting(false)
+      }
+    },
+  })
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(newOpen) => {
+        // Prevent closing dialog during submission
+        if (!isSubmitting) {
+          onOpenChange(newOpen)
+        }
+      }}
+    >
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit Resident</DialogTitle>
+          <DialogDescription>
+            Update resident information. Resident ID: <strong>{resident.residentId}</strong>
+          </DialogDescription>
+        </DialogHeader>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            form.handleSubmit()
+          }}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+            {/* Same fields as Add Resident Dialog */}
+            {/* First Name */}
+            <form.Field
+              name="firstName"
+              validators={{
+                onChange: ({ value }) => {
+                  if (!value?.trim()) {
+                    return { message: 'First name is required' }
+                  }
+                  return undefined
+                },
+              }}
+              children={(field) => {
+                const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel htmlFor={field.name}>
+                      First Name <span className="text-red-500">*</span>
+                    </FieldLabel>
+                    <Input
+                      id={field.name}
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      aria-invalid={isInvalid}
+                    />
+                    {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                  </Field>
+                )
+              }}
+            />
+
+            {/* Middle Name */}
+            <form.Field
+              name="middleName"
+              children={(field) => (
+                <Field>
+                  <FieldLabel htmlFor={field.name}>Middle Name</FieldLabel>
+                  <Input
+                    id={field.name}
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                  />
+                </Field>
+              )}
+            />
+
+            {/* Last Name */}
+            <form.Field
+              name="lastName"
+              validators={{
+                onChange: ({ value }) => {
+                  if (!value?.trim()) {
+                    return { message: 'Last name is required' }
+                  }
+                  return undefined
+                },
+              }}
+              children={(field) => {
+                const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel htmlFor={field.name}>
+                      Last Name <span className="text-red-500">*</span>
+                    </FieldLabel>
+                    <Input
+                      id={field.name}
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      aria-invalid={isInvalid}
+                    />
+                    {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                  </Field>
+                )
+              }}
+            />
+
+            {/* Suffix */}
+            <form.Field
+              name="suffix"
+              children={(field) => (
+                <Field>
+                  <FieldLabel htmlFor={field.name}>Suffix (Optional)</FieldLabel>
+                  <select
+                    id={field.name}
+                    value={field.state.value || ''}
+                    onBlur={field.handleBlur}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      field.handleChange(value === '' ? '' : value)
+                    }}
+                    className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="">None</option>
+                    <option value="Jr.">Jr.</option>
+                    <option value="Sr.">Sr.</option>
+                    <option value="II">II</option>
+                    <option value="III">III</option>
+                    <option value="IV">IV</option>
+                    <option value="V">V</option>
+                  </select>
+                </Field>
+              )}
+            />
+
+            {/* Birthdate */}
+            <form.Field
+              name="birthdate"
+              children={(field) => {
+                const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel htmlFor={field.name}>
+                      Birthdate <span className="text-red-500">*</span>
+                    </FieldLabel>
+                    <Input
+                      id={field.name}
+                      type="date"
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      max={new Date().toISOString().split('T')[0]}
+                      aria-invalid={isInvalid}
+                    />
+                    {field.state.value && (
+                      <FieldDescription>
+                        Age: {calculateAge(new Date(field.state.value).getTime())} years old
+                      </FieldDescription>
+                    )}
+                    {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                  </Field>
+                )
+              }}
+            />
+
+            {/* Sex */}
+            <form.Field
+              name="sex"
+              validators={{
+                onChange: ({ value }) => {
+                  if (!value || (value !== 'male' && value !== 'female' && value !== 'other')) {
+                    return { message: 'Gender is required' }
+                  }
+                  return undefined
+                },
+              }}
+              children={(field) => {
+                const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel>
+                      Gender <span className="text-red-500">*</span>
+                    </FieldLabel>
+                    <RadioGroup
+                      value={field.state.value}
+                      onValueChange={(value) => field.handleChange(value as any)}
+                      className="flex gap-6 mt-2"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="male" id="edit-sex-male" />
+                        <FieldLabel htmlFor="edit-sex-male" className="cursor-pointer">Male</FieldLabel>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="female" id="edit-sex-female" />
+                        <FieldLabel htmlFor="edit-sex-female" className="cursor-pointer">Female</FieldLabel>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="other" id="edit-sex-other" />
+                        <FieldLabel htmlFor="edit-sex-other" className="cursor-pointer">Other</FieldLabel>
+                      </div>
+                    </RadioGroup>
+                    {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                  </Field>
+                )
+              }}
+            />
+
+            {/* Purok */}
+            <form.Field
+              name="purok"
+              validators={{
+                onChange: ({ value }) => {
+                  if (!value?.trim()) {
+                    return { message: 'Purok is required' }
+                  }
+                  return undefined
+                },
+              }}
+              children={(field) => {
+                const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel htmlFor={field.name}>
+                      Purok <span className="text-red-500">*</span>
+                    </FieldLabel>
+                    <Input
+                      id={field.name}
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      aria-invalid={isInvalid}
+                    />
+                    {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                  </Field>
+                )
+              }}
+            />
+
+            {/* Status */}
+            <form.Field
+              name="status"
+              children={(field) => (
+                <Field>
+                  <FieldLabel htmlFor={field.name}>Status</FieldLabel>
+                  <Select
+                    value={field.state.value}
+                    onValueChange={(value) => field.handleChange(value as any)}
+                  >
+                    <SelectTrigger id={field.name}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="resident">Resident</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="deceased">Deceased</SelectItem>
+                      <SelectItem value="moved">Moved</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
+            />
+
+            {/* Senior or PWD */}
+            <form.Field
+              name="seniorOrPwd"
+              children={(field) => (
+                <Field>
+                  <FieldLabel htmlFor={field.name}>Senior or PWD</FieldLabel>
+                  <Select
+                    value={field.state.value}
+                    onValueChange={(value) => field.handleChange(value as any)}
+                  >
+                    <SelectTrigger id={field.name}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      <SelectItem value="senior">Senior</SelectItem>
+                      <SelectItem value="pwd">PWD</SelectItem>
+                      <SelectItem value="both">Both (Senior & PWD)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Update Resident
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

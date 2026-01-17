@@ -20,6 +20,7 @@ import {
   FieldLegend,
 } from '@/components/ui/field'
 import { CheckCircle2, Loader2, ScanLine, UserPlus, Calendar, X } from 'lucide-react'
+import { toast } from 'sonner'
 
 export const Route = createFileRoute('/kiosk')({
   component: KioskPage,
@@ -47,24 +48,11 @@ const lookupFormSchema = z.object({
     ),
 })
 
-const guestFormSchema = z.object({
-  firstName: z.string().min(1, 'First name is required'),
-  middleName: z.string(),
-  lastName: z.string().min(1, 'Last name is required'),
-  zone: z.string().min(1, 'Zone is required'),
-  purok: z.string().min(1, 'Purok is required'),
-  birthdate: z.string().min(1, 'Birthdate is required'),
-  sex: z.enum(['male', 'female', 'other'], {
-    message: 'Please select sex',
-  }),
-  address: z.string().min(1, 'Address is required'),
-  disability: z.boolean(),
-})
-
 function KioskPage() {
   const [mode, setMode] = useState<Mode>('select')
   const [queueNumber, setQueueNumber] = useState<string | null>(null)
   const [manualStep, setManualStep] = useState<1 | 2>(1)
+  const [searchResidentId, setSearchResidentId] = useState<string>('') // Only query when this is set
   const residentIdInputRef = useRef<HTMLInputElement>(null)
 
   // Queries
@@ -91,15 +79,24 @@ function KioskPage() {
       firstName: '',
       middleName: '',
       lastName: '',
-      zone: '',
+      suffix: '',
       purok: '',
       birthdate: '',
       sex: 'male' as 'male' | 'female' | 'other',
-      address: '',
-      disability: false,
+      seniorOrPwd: 'none' as 'none' | 'senior' | 'pwd' | 'both',
     },
     validators: {
-      onSubmit: guestFormSchema,
+      onSubmit: ({ value }) => {
+        const errors: Record<string, string> = {}
+        if (!value.firstName?.trim()) errors.firstName = 'First name is required'
+        if (!value.lastName?.trim()) errors.lastName = 'Last name is required'
+        if (!value.birthdate) errors.birthdate = 'Birthdate is required'
+        if (!value.purok?.trim()) errors.purok = 'Purok is required'
+        if (!value.sex || (value.sex !== 'male' && value.sex !== 'female' && value.sex !== 'other')) {
+          errors.sex = 'Sex is required'
+        }
+        return Object.keys(errors).length > 0 ? errors : undefined
+      },
     },
     onSubmit: async () => {
       // Move to step 2
@@ -124,13 +121,35 @@ function KioskPage() {
     },
   })
 
-  // Get resident based on lookup form value
+  // Get resident based on search button click (saves queries - only searches when user clicks)
+  const residentIdToSearch = searchResidentId.trim().toUpperCase()
+  const isValidFormat = /^BH-\d+$/.test(residentIdToSearch)
+  const shouldQuery = isValidFormat && residentIdToSearch.length >= 7 // BH-00001 is minimum (7 chars: BH-00001)
+  
+  // Only query when searchResidentId is set (after clicking Search button)
   const resident = useQuery(
     api.residents.getByResidentId,
-    lookupForm.state.values.residentId.trim()
-      ? { residentId: lookupForm.state.values.residentId.trim().toUpperCase() }
-      : 'skip'
+    shouldQuery ? { residentId: residentIdToSearch } : 'skip'
   )
+  
+  // Handle search button click
+  const handleSearch = () => {
+    const currentId = lookupForm.state.values.residentId.trim().toUpperCase()
+    const currentIsValid = /^BH-\d+$/.test(currentId) && currentId.length >= 7
+    
+    if (!currentId) {
+      toast.error('Please enter a Resident ID')
+      return
+    }
+    
+    if (!currentIsValid) {
+      toast.error('Invalid Resident ID format. Please use format: BH-00001')
+      return
+    }
+    
+    // Set the search ID to trigger the query
+    setSearchResidentId(currentId)
+  }
 
   // Auto-focus resident ID input on mount (for barcode scanner)
   useEffect(() => {
@@ -163,8 +182,21 @@ function KioskPage() {
     await lookupForm.handleSubmit()
     if (!lookupForm.state.isValid) return
 
-    if (!resident?._id) {
-      return // Error will be shown in UI
+    // Check if resident was searched and found
+    if (!searchResidentId) {
+      toast.error('Please search for a resident first')
+      return
+    }
+
+    // Check if query is still loading
+    if (shouldQuery && resident === undefined) {
+      toast.error('Please wait while we search for the resident...')
+      return
+    }
+
+    if (resident === null || !resident?._id) {
+      toast.error('Resident not found. Please check the Resident ID and try again.')
+      return
     }
 
     // Validate certificates with document type requirements
@@ -187,6 +219,11 @@ function KioskPage() {
         purpose: cert.purpose.trim(),
       }))
 
+      if (!resident) {
+        toast.error('Resident not found. Please check the Resident ID and try again.')
+        return
+      }
+
       const result = await submitRequest({
         residentId: resident._id,
         items,
@@ -198,6 +235,7 @@ function KioskPage() {
       setTimeout(() => {
         setQueueNumber(null)
         lookupForm.reset()
+        setSearchResidentId('') // Reset search
         if (residentIdInputRef.current) {
           residentIdInputRef.current.focus()
         }
@@ -235,12 +273,11 @@ function KioskPage() {
           firstName: guestData.firstName,
           middleName: guestData.middleName || '',
           lastName: guestData.lastName,
+          suffix: guestData.suffix || undefined,
           sex: guestData.sex,
           birthdate: birthdateTimestamp,
-          zone: guestData.zone,
           purok: guestData.purok,
-          address: guestData.address,
-          disability: guestData.disability,
+          seniorOrPwd: guestData.seniorOrPwd || 'none',
         },
         items,
       })
@@ -389,40 +426,94 @@ function KioskPage() {
                 id="lookup-form"
                 onSubmit={(e) => {
                   e.preventDefault()
-                  handleLookupSubmit()
+                  handleSearch() // Search on Enter key
                 }}
               >
                 <FieldGroup>
                   {/* Resident ID Input */}
                   <lookupForm.Field
                     name="residentId"
+                    validators={{
+                      onChange: ({ value }) => {
+                        const trimmed = value.trim().toUpperCase()
+                        if (!trimmed) {
+                          return undefined // Don't show error while typing
+                        }
+                        // Only validate format if user has typed enough characters
+                        if (trimmed.length >= 3 && !/^BH-\d+$/.test(trimmed)) {
+                          return { message: 'Invalid format. Use BH-00001 format' }
+                        }
+                        return undefined
+                      },
+                      onBlur: ({ value }) => {
+                        const trimmed = value.trim().toUpperCase()
+                        if (!trimmed) {
+                          return { message: 'Resident ID is required' }
+                        }
+                        if (!/^BH-\d+$/.test(trimmed)) {
+                          return { message: 'Invalid format. Use BH-00001 format' }
+                        }
+                        if (trimmed.length < 7) { // BH-00001 is 7 characters minimum
+                          return { message: 'Invalid format. Use BH-00001 format' }
+                        }
+                        return undefined
+                      },
+                    }}
                     children={(field) => {
-                      const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
+                      const fieldValue = field.state.value.trim().toUpperCase()
+                      const fieldIsValidFormat = /^BH-\d+$/.test(fieldValue) && fieldValue.length >= 7
+                      const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                      const showFormatError = fieldValue && !fieldIsValidFormat && fieldValue.length >= 3 && field.state.meta.isTouched
+                      
                       return (
                         <Field data-invalid={isInvalid}>
                           <FieldLabel htmlFor={field.name}>Resident ID</FieldLabel>
-                          <Input
-                            id={field.name}
-                            ref={residentIdInputRef}
-                            name={field.name}
-                            value={field.state.value}
-                            onBlur={field.handleBlur}
-                            onChange={(e) => field.handleChange(e.target.value.toUpperCase())}
-                            placeholder="BH-00001"
-                            className="text-xl text-center h-14"
-                            autoFocus
-                            aria-invalid={isInvalid}
-                          />
+                          <div className="flex gap-2">
+                            <Input
+                              id={field.name}
+                              ref={residentIdInputRef}
+                              name={field.name}
+                              value={field.state.value}
+                              onBlur={field.handleBlur}
+                              onChange={(e) => {
+                                field.handleChange(e.target.value.toUpperCase())
+                                setSearchResidentId('') // Clear search result when typing
+                              }}
+                              placeholder="BH-00001"
+                              className="text-xl text-center h-14 font-mono flex-1"
+                              autoFocus
+                              aria-invalid={isInvalid}
+                            />
+                            <Button
+                              type="button"
+                              onClick={handleSearch}
+                              disabled={!fieldIsValidFormat}
+                              className="h-14 px-6"
+                            >
+                              <ScanLine className="w-5 h-5 mr-2" />
+                              Search
+                            </Button>
+                          </div>
                           {isInvalid && <FieldError errors={field.state.meta.errors} />}
-                          {field.state.value && !resident && (
-                            <p className="text-sm text-red-600">Resident not found</p>
+                          {showFormatError && !isInvalid && (
+                            <p className="text-sm text-amber-600 font-medium mt-1">Invalid format. Use BH-00001 format</p>
+                          )}
+                          {shouldQuery && resident === null && (
+                            <p className="text-sm text-red-600 font-medium mt-1">Resident not found</p>
                           )}
                         </Field>
                       )
                     }}
                   />
 
-                  {/* Resident Info Display */}
+                  {/* Loading State - Centered Spinner */}
+                  {shouldQuery && resident === undefined && (
+                    <div className="flex items-center justify-center py-16">
+                      <Loader2 className="w-16 h-16 animate-spin" />
+                    </div>
+                  )}
+
+                  {/* Resident Info Display - Only show if resident was found */}
                   {resident && (
                     <Card className="bg-blue-50">
                       <CardHeader>
@@ -432,13 +523,10 @@ function KioskPage() {
                         <div>
                           <span className="font-semibold">Name:</span>{' '}
                           {resident.firstName} {resident.middleName} {resident.lastName}
+                          {(resident as any).suffix && ` ${(resident as any).suffix}`}
                         </div>
                         <div>
-                          <span className="font-semibold">Zone:</span> {resident.zone} |{' '}
                           <span className="font-semibold">Purok:</span> {resident.purok}
-                        </div>
-                        <div>
-                          <span className="font-semibold">Address:</span> {resident.address}
                         </div>
                       </CardContent>
                     </Card>
@@ -458,72 +546,55 @@ function KioskPage() {
                             <FieldGroup data-slot="checkbox-group" className="space-y-3">
                               {activeDocumentTypes.map((docType) => {
                                 const certIndex = field.state.value.findIndex(
-                                  (c) => c.documentTypeId === docType._id
+                                  (c: any) => c.documentTypeId === docType._id
                                 )
                                 const isChecked = certIndex !== -1
+                                const cert = isChecked ? field.state.value[certIndex] : null
 
                                 return (
-                                  <div key={docType._id} className="border rounded-lg p-4 space-y-2">
-                                    <Field orientation="horizontal">
-                                      <Checkbox
-                                        id={docType._id}
-                                        checked={isChecked}
-                                        onCheckedChange={(checked) => {
-                                          if (checked) {
-                                            field.pushValue({
-                                              documentTypeId: docType._id,
-                                              purpose: '',
-                                            })
-                                          } else {
-                                            if (certIndex > -1) {
-                                              field.removeValue(certIndex)
-                                            }
-                                          }
-                                        }}
-                                      />
-                                      <FieldLabel htmlFor={docType._id} className="flex-1 cursor-pointer font-medium">
+                                  <div key={docType._id} className="flex items-start space-x-3">
+                                    <Checkbox
+                                      id={`cert-${docType._id}`}
+                                      checked={isChecked}
+                                      onCheckedChange={(checked) => {
+                                        const currentCerts = [...field.state.value]
+                                        if (checked) {
+                                          currentCerts.push({
+                                            documentTypeId: docType._id,
+                                            purpose: '',
+                                          })
+                                        } else {
+                                          currentCerts.splice(certIndex, 1)
+                                        }
+                                        field.handleChange(currentCerts)
+                                      }}
+                                    />
+                                    <div className="flex-1">
+                                      <label
+                                        htmlFor={`cert-${docType._id}`}
+                                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                                      >
                                         {docType.name}
-                                      </FieldLabel>
-                                      <span className="text-blue-600 font-semibold">
-                                        ₱{(docType.price / 100).toFixed(2)}
-                                      </span>
-                                    </Field>
-
-                                    {isChecked && certIndex !== -1 && (
-                                      <lookupForm.Field
-                                        name={`certificates[${certIndex}].purpose`}
-                                        children={(purposeField) => {
-                                          const isPurposeInvalid =
-                                            purposeField.state.meta.isTouched &&
-                                            !purposeField.state.meta.isValid
-                                          const docType = activeDocumentTypes?.find(
-                                            (dt) => dt._id === field.state.value[certIndex]?.documentTypeId
-                                          )
-                                          return (
-                                            <div className="ml-8">
-                                              <Field data-invalid={isPurposeInvalid}>
-                                                <FieldLabel htmlFor={purposeField.name} className="text-sm">
-                                                  Purpose {docType?.requiresPurpose && <span className="text-red-500">*</span>}
-                                                </FieldLabel>
-                                                <Textarea
-                                                  id={purposeField.name}
-                                                  name={purposeField.name}
-                                                  value={purposeField.state.value}
-                                                  onBlur={purposeField.handleBlur}
-                                                  onChange={(e) => purposeField.handleChange(e.target.value)}
-                                                  placeholder="Enter purpose for this certificate..."
-                                                  rows={2}
-                                                  aria-invalid={isPurposeInvalid}
-                                                />
-                                                {isPurposeInvalid && (
-                                                  <FieldError errors={purposeField.state.meta.errors} />
-                                                )}
-                                              </Field>
-                                            </div>
-                                          )
-                                        }}
-                                      />
-                                    )}
+                                      </label>
+                                      {docType.requiresPurpose && isChecked && (
+                                        <Textarea
+                                          placeholder="Purpose (required)"
+                                          value={cert?.purpose || ''}
+                                          onChange={(e) => {
+                                            const updatedCerts = [...field.state.value]
+                                            updatedCerts[certIndex] = {
+                                              ...updatedCerts[certIndex],
+                                              purpose: e.target.value,
+                                            }
+                                            field.handleChange(updatedCerts)
+                                          }}
+                                          className="mt-2"
+                                        />
+                                      )}
+                                    </div>
+                                    <div className="text-sm font-semibold">
+                                      ₱{(docType.price / 100).toFixed(2)}
+                                    </div>
                                   </div>
                                 )
                               })}
@@ -533,6 +604,7 @@ function KioskPage() {
                       }}
                     />
                   )}
+
 
                   {/* Total Price */}
                   {lookupForm.state.values.certificates.length > 0 && (
@@ -547,8 +619,8 @@ function KioskPage() {
                   {/* Submit Button */}
                   {resident && (
                     <Button
-                      type="submit"
-                      form="lookup-form"
+                      type="button"
+                      onClick={handleLookupSubmit}
                       size="lg"
                       className="w-full"
                       disabled={lookupForm.state.values.certificates.length === 0}
@@ -608,13 +680,22 @@ function KioskPage() {
                     {/* Personal Information */}
                     <FieldSet>
                       <FieldLegend variant="label">Personal Information</FieldLegend>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Row 1: First Name, Middle Name, Last Name, Suffix */}
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
                         <guestForm.Field
                           name="firstName"
+                          validators={{
+                            onChange: ({ value }) => {
+                              if (!value?.trim()) {
+                                return { message: 'First name is required' }
+                              }
+                              return undefined
+                            },
+                          }}
                           children={(field) => {
-                            const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
+                            const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
                             return (
-                              <Field data-invalid={isInvalid}>
+                              <Field data-invalid={isInvalid} className="md:col-span-4">
                                 <FieldLabel htmlFor={field.name}>
                                   First Name <span className="text-red-500">*</span>
                                 </FieldLabel>
@@ -636,7 +717,7 @@ function KioskPage() {
                           name="middleName"
                           children={(field) => {
                             return (
-                              <Field>
+                              <Field className="md:col-span-3">
                                 <FieldLabel htmlFor={field.name}>Middle Name</FieldLabel>
                                 <Input
                                   id={field.name}
@@ -652,10 +733,18 @@ function KioskPage() {
                         />
                         <guestForm.Field
                           name="lastName"
+                          validators={{
+                            onChange: ({ value }) => {
+                              if (!value?.trim()) {
+                                return { message: 'Last name is required' }
+                              }
+                              return undefined
+                            },
+                          }}
                           children={(field) => {
-                            const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
+                            const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
                             return (
-                              <Field data-invalid={isInvalid}>
+                              <Field data-invalid={isInvalid} className="md:col-span-3">
                                 <FieldLabel htmlFor={field.name}>
                                   Last Name <span className="text-red-500">*</span>
                                 </FieldLabel>
@@ -673,13 +762,49 @@ function KioskPage() {
                             )
                           }}
                         />
+                        <guestForm.Field
+                          name="suffix"
+                          children={(field) => (
+                            <Field className="md:col-span-2">
+                              <FieldLabel htmlFor={field.name}>Suffix</FieldLabel>
+                              <select
+                                id={field.name}
+                                name={field.name}
+                                value={field.state.value || ''}
+                                onBlur={field.handleBlur}
+                                onChange={(e) => {
+                                  const value = e.target.value
+                                  field.handleChange(value === '' ? '' : value)
+                                }}
+                                className="mt-1 flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <option value="">None</option>
+                                <option value="Jr.">Jr.</option>
+                                <option value="Sr.">Sr.</option>
+                                <option value="II">II</option>
+                                <option value="III">III</option>
+                                <option value="IV">IV</option>
+                                <option value="V">V</option>
+                              </select>
+                            </Field>
+                          )}
+                        />
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Row 2: Birthday, Sex, Purok */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <guestForm.Field
                           name="birthdate"
+                          validators={{
+                            onChange: ({ value }) => {
+                              if (!value) {
+                                return { message: 'Birthday is required' }
+                              }
+                              return undefined
+                            },
+                          }}
                           children={(field) => {
-                            const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
+                            const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
                             return (
                               <Field data-invalid={isInvalid}>
                                 <FieldLabel htmlFor={field.name}>
@@ -708,8 +833,16 @@ function KioskPage() {
                         />
                         <guestForm.Field
                           name="sex"
+                          validators={{
+                            onChange: ({ value }) => {
+                              if (!value || (value !== 'male' && value !== 'female' && value !== 'other')) {
+                                return { message: 'Sex is required' }
+                              }
+                              return undefined
+                            },
+                          }}
                           children={(field) => {
-                            const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
+                            const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
                             return (
                               <Field data-invalid={isInvalid}>
                                 <FieldLabel>
@@ -741,40 +874,18 @@ function KioskPage() {
                             )
                           }}
                         />
-                      </div>
-                    </FieldSet>
-
-                    {/* Location Information */}
-                    <FieldSet>
-                      <FieldLegend variant="label">Location Information</FieldLegend>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <guestForm.Field
-                          name="zone"
-                          children={(field) => {
-                            const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
-                            return (
-                              <Field data-invalid={isInvalid}>
-                                <FieldLabel htmlFor={field.name}>
-                                  Zone <span className="text-red-500">*</span>
-                                </FieldLabel>
-                                <Input
-                                  id={field.name}
-                                  name={field.name}
-                                  value={field.state.value}
-                                  onBlur={field.handleBlur}
-                                  onChange={(e) => field.handleChange(e.target.value)}
-                                  className="h-11"
-                                  aria-invalid={isInvalid}
-                                />
-                                {isInvalid && <FieldError errors={field.state.meta.errors} />}
-                              </Field>
-                            )
-                          }}
-                        />
                         <guestForm.Field
                           name="purok"
+                          validators={{
+                            onChange: ({ value }) => {
+                              if (!value?.trim()) {
+                                return { message: 'Purok is required' }
+                              }
+                              return undefined
+                            },
+                          }}
                           children={(field) => {
-                            const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
+                            const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
                             return (
                               <Field data-invalid={isInvalid}>
                                 <FieldLabel htmlFor={field.name}>
@@ -796,49 +907,37 @@ function KioskPage() {
                         />
                       </div>
 
-                      <guestForm.Field
-                        name="address"
-                        children={(field) => {
-                          const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
-                          return (
-                            <Field data-invalid={isInvalid}>
-                              <FieldLabel htmlFor={field.name}>
-                                Complete Address <span className="text-red-500">*</span>
-                              </FieldLabel>
-                              <Textarea
-                                id={field.name}
-                                name={field.name}
-                                value={field.state.value}
-                                onBlur={field.handleBlur}
-                                onChange={(e) => field.handleChange(e.target.value)}
-                                rows={2}
-                                placeholder="Enter your complete address..."
-                                aria-invalid={isInvalid}
-                              />
-                              {isInvalid && <FieldError errors={field.state.meta.errors} />}
-                            </Field>
-                          )
-                        }}
-                      />
-
-                      <guestForm.Field
-                        name="disability"
-                        children={(field) => {
-                          return (
-                            <Field orientation="horizontal">
-                              <Checkbox
-                                id={field.name}
-                                name={field.name}
-                                checked={field.state.value}
-                                onCheckedChange={(checked) => field.handleChange(checked === true)}
-                              />
-                              <FieldLabel htmlFor={field.name} className="cursor-pointer">
-                                Person with Disability (PWD)
-                              </FieldLabel>
-                            </Field>
-                          )
-                        }}
-                      />
+                      {/* Row 3: Senior or PWD */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <guestForm.Field
+                          name="seniorOrPwd"
+                          children={(field) => {
+                            const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
+                            return (
+                              <Field data-invalid={isInvalid}>
+                                <FieldLabel htmlFor={field.name}>
+                                  Senior or PWD
+                                </FieldLabel>
+                                <select
+                                  id={field.name}
+                                  name={field.name}
+                                  value={field.state.value}
+                                  onBlur={field.handleBlur}
+                                  onChange={(e) => field.handleChange(e.target.value as any)}
+                                  className="mt-1 flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                  aria-invalid={isInvalid}
+                                >
+                                  <option value="none">None</option>
+                                  <option value="senior">Senior</option>
+                                  <option value="pwd">PWD</option>
+                                  <option value="both">Both (Senior & PWD)</option>
+                                </select>
+                                {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                              </Field>
+                            )
+                          }}
+                        />
+                      </div>
                     </FieldSet>
 
                     {/* Next Button */}

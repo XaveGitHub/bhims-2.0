@@ -82,14 +82,17 @@ export const getByQueueNumber = query({
 
 /**
  * Get queue item by document request ID
+ * ✅ OPTIMIZED: Uses by_documentRequestId index (already exists in schema)
  * documentRequestId is unique in queue table
  */
 export const getByRequestId = query({
   args: { documentRequestId: v.id("documentRequests") },
   handler: async (ctx, args) => {
-    // Scan queue items (should be small set, or could add index later)
-    const allItems = await ctx.db.query("queue").collect()
-    return allItems.find((item: any) => item.documentRequestId === args.documentRequestId) || null
+    // ✅ OPTIMIZED: Use by_documentRequestId index instead of .collect()
+    return await ctx.db
+      .query("queue")
+      .withIndex("by_documentRequestId", (q) => q.eq("documentRequestId", args.documentRequestId))
+      .first() || null
   },
 })
 
@@ -123,17 +126,18 @@ export const listByStatus = query({
 export const getActive = query({
   args: {},
   handler: async (ctx) => {
+    // ✅ OPTIMIZED: Add limits for safety (queue items are typically < 1000 per day)
     const waiting = await ctx.db
       .query("queue")
       .withIndex("by_status_createdAt", (q) => q.eq("status", "waiting"))
       .order("asc")
-      .collect()
+      .take(1000) // ✅ OPTIMIZED: Limit to 1000 (should cover a day's worth)
 
     const serving = await ctx.db
       .query("queue")
       .withIndex("by_status_createdAt", (q) => q.eq("status", "serving"))
       .order("asc")
-      .collect()
+      .take(1000) // ✅ OPTIMIZED: Limit to 1000
 
     return {
       waiting,
@@ -153,18 +157,18 @@ export const getDisplayData = query({
     doneLimit: v.optional(v.number()), // Limit for done items (default: 10)
   },
   handler: async (ctx, args) => {
-    // All three queries run in parallel on the server
+    // ✅ OPTIMIZED: All three queries run in parallel with limits
     const waiting = await ctx.db
       .query("queue")
       .withIndex("by_status_createdAt", (q) => q.eq("status", "waiting"))
       .order("asc")
-      .collect()
+      .take(1000) // ✅ OPTIMIZED: Limit to 1000 (should cover a day's worth)
 
     const serving = await ctx.db
       .query("queue")
       .withIndex("by_status_createdAt", (q) => q.eq("status", "serving"))
       .order("asc")
-      .collect()
+      .take(1000) // ✅ OPTIMIZED: Limit to 1000
 
     const done = await ctx.db
       .query("queue")
@@ -189,18 +193,18 @@ export const getStaffQueueData = query({
     counterNumber: v.optional(v.number()), // Filter by counter number (optional)
   },
   handler: async (ctx, args) => {
-    // Get all queue items with their statuses
+    // ✅ OPTIMIZED: Get queue items with limits
     const waiting = await ctx.db
       .query("queue")
       .withIndex("by_status_createdAt", (q) => q.eq("status", "waiting"))
       .order("asc")
-      .collect()
+      .take(1000) // ✅ OPTIMIZED: Limit to 1000
 
     const serving = await ctx.db
       .query("queue")
       .withIndex("by_status_createdAt", (q) => q.eq("status", "serving"))
       .order("asc")
-      .collect()
+      .take(1000) // ✅ OPTIMIZED: Limit to 1000
 
     const done = await ctx.db
       .query("queue")
@@ -304,11 +308,11 @@ export const create = mutation({
   handler: async (ctx, args) => {
     // ✅ PUBLIC: Kiosk can create queue items (no auth required)
 
-    // Check if queue item already exists for this request
-    const allItems = await ctx.db.query("queue").collect()
-    const existing = allItems.find(
-      (item: any) => item.documentRequestId === args.documentRequestId
-    )
+    // ✅ OPTIMIZED: Check if queue item already exists using by_documentRequestId index
+    const existing = await ctx.db
+      .query("queue")
+      .withIndex("by_documentRequestId", (q) => q.eq("documentRequestId", args.documentRequestId))
+      .first()
 
     if (existing) {
       throw new Error(

@@ -17,6 +17,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as StaffQueueRouteImport } from './routes/staff/queue'
 import { Route as AdminDashboardRouteImport } from './routes/admin/dashboard'
 import { Route as StaffProcessRequestIdRouteImport } from './routes/staff/process.$requestId'
+import { Route as AdminResidentsIdRouteImport } from './routes/admin/residents.$id'
 
 const QueueDisplayRoute = QueueDisplayRouteImport.update({
   id: '/queue-display',
@@ -58,6 +59,11 @@ const StaffProcessRequestIdRoute = StaffProcessRequestIdRouteImport.update({
   path: '/staff/process/$requestId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminResidentsIdRoute = AdminResidentsIdRouteImport.update({
+  id: '/admin/residents/$id',
+  path: '/admin/residents/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -67,6 +73,7 @@ export interface FileRoutesByFullPath {
   '/queue-display': typeof QueueDisplayRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/staff/queue': typeof StaffQueueRoute
+  '/admin/residents/$id': typeof AdminResidentsIdRoute
   '/staff/process/$requestId': typeof StaffProcessRequestIdRoute
 }
 export interface FileRoutesByTo {
@@ -77,6 +84,7 @@ export interface FileRoutesByTo {
   '/queue-display': typeof QueueDisplayRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/staff/queue': typeof StaffQueueRoute
+  '/admin/residents/$id': typeof AdminResidentsIdRoute
   '/staff/process/$requestId': typeof StaffProcessRequestIdRoute
 }
 export interface FileRoutesById {
@@ -88,6 +96,7 @@ export interface FileRoutesById {
   '/queue-display': typeof QueueDisplayRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/staff/queue': typeof StaffQueueRoute
+  '/admin/residents/$id': typeof AdminResidentsIdRoute
   '/staff/process/$requestId': typeof StaffProcessRequestIdRoute
 }
 export interface FileRouteTypes {
@@ -100,6 +109,7 @@ export interface FileRouteTypes {
     | '/queue-display'
     | '/admin/dashboard'
     | '/staff/queue'
+    | '/admin/residents/$id'
     | '/staff/process/$requestId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -110,6 +120,7 @@ export interface FileRouteTypes {
     | '/queue-display'
     | '/admin/dashboard'
     | '/staff/queue'
+    | '/admin/residents/$id'
     | '/staff/process/$requestId'
   id:
     | '__root__'
@@ -120,6 +131,7 @@ export interface FileRouteTypes {
     | '/queue-display'
     | '/admin/dashboard'
     | '/staff/queue'
+    | '/admin/residents/$id'
     | '/staff/process/$requestId'
   fileRoutesById: FileRoutesById
 }
@@ -131,6 +143,7 @@ export interface RootRouteChildren {
   QueueDisplayRoute: typeof QueueDisplayRoute
   AdminDashboardRoute: typeof AdminDashboardRoute
   StaffQueueRoute: typeof StaffQueueRoute
+  AdminResidentsIdRoute: typeof AdminResidentsIdRoute
   StaffProcessRequestIdRoute: typeof StaffProcessRequestIdRoute
 }
 
@@ -192,6 +205,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StaffProcessRequestIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/residents/$id': {
+      id: '/admin/residents/$id'
+      path: '/admin/residents/$id'
+      fullPath: '/admin/residents/$id'
+      preLoaderRoute: typeof AdminResidentsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -203,6 +223,7 @@ const rootRouteChildren: RootRouteChildren = {
   QueueDisplayRoute: QueueDisplayRoute,
   AdminDashboardRoute: AdminDashboardRoute,
   StaffQueueRoute: StaffQueueRoute,
+  AdminResidentsIdRoute: AdminResidentsIdRoute,
   StaffProcessRequestIdRoute: StaffProcessRequestIdRoute,
 }
 export const routeTree = rootRouteImport

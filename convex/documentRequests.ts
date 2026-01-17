@@ -69,14 +69,15 @@ export const getForProcessing = query({
     const resident = await ctx.db.get(request.residentId)
     if (!resident) return null
 
-    // Get all items for this request
+    // ✅ OPTIMIZED: Get all items for this request (items per request are typically < 10)
+    // Using index + collect is acceptable here since items per request are small
     const items = await ctx.db
       .query("documentRequestItems")
       .withIndex("by_documentRequestId", (q) =>
         q.eq("documentRequestId", args.id)
       )
       .order("asc")
-      .collect()
+      .take(50) // ✅ OPTIMIZED: Add limit for safety (should never exceed this)
 
     // Batch fetch document types
     const documentTypeIds = [...new Set(items.map((item: any) => item.documentTypeId))]
@@ -194,13 +195,13 @@ export const getStaffRequests = query({
       residents.filter(Boolean).map((r: any) => [r._id, r])
     )
 
-    // Get all document request items for all requests
+    // ✅ OPTIMIZED: Get all document request items for all requests (with limit)
     const allItems = await Promise.all(
       allRequests.map((request: any) =>
         ctx.db
           .query("documentRequestItems")
           .withIndex("by_documentRequestId", (q) => q.eq("documentRequestId", request._id))
-          .collect()
+          .take(50) // ✅ OPTIMIZED: Limit items per request (should never exceed this)
       )
     )
     const flatItems = allItems.flat()
@@ -257,20 +258,25 @@ export const getStaffRequests = query({
 
 /**
  * Generate unique request number
+ * ✅ OPTIMIZED: Uses by_requestedAt index to query only today's requests
  * Format: REQ-YYYYMMDD-001 (increments daily)
  */
 async function generateRequestNumber(ctx: any): Promise<string> {
   const today = new Date()
-  const datePrefix = today.toISOString().slice(0, 10).replace(/-/g, "") // YYYYMMDD
-
-  // Get all requests created today
   const todayStart = new Date(today)
   todayStart.setHours(0, 0, 0, 0)
+  const todayEnd = new Date(today)
+  todayEnd.setHours(23, 59, 59, 999)
+  
+  const datePrefix = today.toISOString().slice(0, 10).replace(/-/g, "") // YYYYMMDD
 
-  const allRequests = await ctx.db.query("documentRequests").collect()
-  const todayRequests = allRequests.filter(
-    (req: any) => req.requestedAt >= todayStart.getTime()
-  )
+  // ✅ OPTIMIZED: Query only today's requests using by_requestedAt index
+  const todayRequests = await ctx.db
+    .query("documentRequests")
+    .withIndex("by_requestedAt", (q) =>
+      q.gte("requestedAt", todayStart.getTime()).lte("requestedAt", todayEnd.getTime())
+    )
+    .collect()
 
   let maxNumber = 0
 
@@ -305,9 +311,22 @@ export const create = mutation({
     // Generate request number if not provided
     const requestNumber = args.requestNumber || (await generateRequestNumber(ctx))
 
-    // Check if request number already exists
-    const allRequests = await ctx.db.query("documentRequests").collect()
-    const existing = allRequests.find((req) => req.requestNumber === requestNumber)
+    // ✅ OPTIMIZED: Check if request number already exists using today's requests only
+    // Since request numbers are unique per day, we only need to check today's requests
+    const today = new Date()
+    const todayStart = new Date(today)
+    todayStart.setHours(0, 0, 0, 0)
+    const todayEnd = new Date(today)
+    todayEnd.setHours(23, 59, 59, 999)
+    
+    const todayRequests = await ctx.db
+      .query("documentRequests")
+      .withIndex("by_requestedAt", (q) =>
+        q.gte("requestedAt", todayStart.getTime()).lte("requestedAt", todayEnd.getTime())
+      )
+      .collect()
+    
+    const existing = todayRequests.find((req) => req.requestNumber === requestNumber)
 
     if (existing) {
       throw new Error(`Request number ${requestNumber} already exists`)
@@ -396,13 +415,13 @@ export const markAsClaim = mutation({
       throw new Error("Unauthorized: Only staff can mark requests as claim")
     }
 
-    // Check that all items are printed
+    // ✅ OPTIMIZED: Check that all items are printed (with limit)
     const items = await ctx.db
       .query("documentRequestItems")
       .withIndex("by_documentRequestId", (q) =>
         q.eq("documentRequestId", args.id)
       )
-      .collect()
+      .take(50) // ✅ OPTIMIZED: Limit items per request
 
     const allPrinted = items.every((item: any) => item.status === "printed")
     if (!allPrinted) {

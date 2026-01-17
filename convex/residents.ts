@@ -24,56 +24,39 @@ export const list = query({
         v.literal("pending")
       )
     ),
-    zone: v.optional(v.string()),
-    gender: v.optional(v.union(v.literal("male"), v.literal("female"), v.literal("other"))), // ✅ NEW: Gender filter
+    purok: v.optional(v.string()), // Changed from zone to purok
+    gender: v.optional(v.union(v.literal("male"), v.literal("female"), v.literal("other"))),
     limit: v.optional(v.number()),
-    offset: v.optional(v.number()), // ✅ NEW: Pagination support
+    offset: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const limit = args.limit ?? 50 // ✅ OPTIMIZED: Default to 50 instead of 100
+    const limit = args.limit ?? 50
     const offset = args.offset ?? 0
 
-    // ✅ OPTIMIZED: Use server-side filters (status, zone) with indexes
+    // ✅ OPTIMIZED: Use server-side filters (status, purok) with indexes
     // Gender filter will be applied client-side (no index available)
-    // This is still efficient: fetch filtered subset, then filter by gender
     
     let allResidents: any[]
     
     // If status is provided, use by_status index
     if (args.status !== undefined) {
-      if (args.zone !== undefined) {
-        // Use composite index by_status_zone for efficient filtering
-        allResidents = await ctx.db
-          .query("residents")
-          .withIndex("by_status_zone", (q) =>
-            q.eq("status", args.status!).eq("zone", args.zone!)
-          )
-          .order("desc")
-          .take((limit + offset) * 2) // Fetch more to account for gender filtering
-      } else {
-        allResidents = await ctx.db
-          .query("residents")
-          .withIndex("by_status", (q) => q.eq("status", args.status!))
-          .order("desc")
-          .take((limit + offset) * 2) // Fetch more to account for gender filtering
-      }
-    } else if (args.zone !== undefined) {
-      // Use by_zone index if only zone is provided
       allResidents = await ctx.db
         .query("residents")
-        .withIndex("by_zone", (q) => q.eq("zone", args.zone!))
+        .withIndex("by_status", (q) => q.eq("status", args.status!))
         .order("desc")
-        .take((limit + offset) * 2) // Fetch more to account for gender filtering
+        .take((limit + offset) * 2) // Fetch more to account for gender/purok filtering
     } else {
       // Default: return all residents (limited with pagination)
       allResidents = await ctx.db
         .query("residents")
         .order("desc")
-        .take((limit + offset) * 2) // Fetch more to account for gender filtering
+        .take((limit + offset) * 2) // Fetch more to account for gender/purok filtering
     }
 
-    // ✅ OPTIMIZED: Apply gender filter client-side (no index available)
-    // This is acceptable because we've already filtered by status/zone server-side
+    // ✅ OPTIMIZED: Apply filters client-side (purok and gender - no indexes available)
+    if (args.purok !== undefined) {
+      allResidents = allResidents.filter((r) => r.purok === args.purok)
+    }
     if (args.gender !== undefined) {
       allResidents = allResidents.filter((r) => r.sex === args.gender)
     }
@@ -96,14 +79,21 @@ export const get = query({
 /**
  * Get resident by residentId (BH-00001 format) - Used for barcode scanning
  * Uses by_residentId index for fast lookup
+ * ✅ PUBLIC: No auth required (kiosk is public)
  */
 export const getByResidentId = query({
   args: { residentId: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    // Normalize the residentId (uppercase, trimmed)
+    const normalizedId = args.residentId.trim().toUpperCase()
+    
+    // Query using the index
+    const resident = await ctx.db
       .query("residents")
-      .withIndex("by_residentId", (q) => q.eq("residentId", args.residentId))
-      .unique()
+      .withIndex("by_residentId", (q) => q.eq("residentId", normalizedId))
+      .first()
+    
+    return resident || null
   },
 })
 
@@ -191,12 +181,12 @@ export const listByStatus = query({
 })
 
 /**
- * Get residents by zone
- * Uses by_zone index
+ * Get residents by purok
+ * Uses status index, then filters by purok client-side
  */
-export const listByZone = query({
+export const listByPurok = query({
   args: {
-    zone: v.string(),
+    purok: v.string(),
     status: v.optional(
       v.union(
         v.literal("resident"),
@@ -208,22 +198,25 @@ export const listByZone = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    let residents: any[]
     if (args.status !== undefined) {
-      // Use composite index for better performance
-      return await ctx.db
+      // Use status index, then filter by purok client-side
+      residents = await ctx.db
         .query("residents")
-        .withIndex("by_status_zone", (q) =>
-          q.eq("status", args.status!).eq("zone", args.zone!)
-        )
+        .withIndex("by_status", (q) => q.eq("status", args.status!))
         .order("desc")
-        .take(args.limit ?? 100)
+        .take(args.limit ? args.limit * 2 : 200) // Fetch more to account for purok filtering
     } else {
-      return await ctx.db
+      // Fetch all residents, then filter by purok
+      residents = await ctx.db
         .query("residents")
-        .withIndex("by_zone", (q) => q.eq("zone", args.zone!))
         .order("desc")
-        .take(args.limit ?? 100)
+        .take(args.limit ? args.limit * 2 : 200)
     }
+    
+    // Filter by purok client-side
+    const filtered = residents.filter((r) => r.purok === args.purok)
+    return filtered.slice(0, args.limit ?? 100)
   },
 })
 
@@ -286,12 +279,16 @@ export const create = mutation({
     firstName: v.string(),
     middleName: v.string(),
     lastName: v.string(),
+    suffix: v.optional(v.string()), // Optional suffix (e.g., Jr., Sr., III)
     sex: v.union(v.literal("male"), v.literal("female"), v.literal("other")),
     birthdate: v.number(), // Timestamp
-    zone: v.string(),
     purok: v.string(),
-    address: v.string(),
-    disability: v.boolean(),
+    seniorOrPwd: v.union(
+      v.literal("none"),
+      v.literal("senior"),
+      v.literal("pwd"),
+      v.literal("both")
+    ),
     status: v.union(
       v.literal("resident"),
       v.literal("deceased"),
@@ -325,12 +322,11 @@ export const create = mutation({
       firstName: args.firstName,
       middleName: args.middleName,
       lastName: args.lastName,
+      suffix: args.suffix,
       sex: args.sex,
       birthdate: args.birthdate,
-      zone: args.zone,
       purok: args.purok,
-      address: args.address,
-      disability: args.disability,
+      seniorOrPwd: args.seniorOrPwd,
       status: args.status,
       createdAt: now,
       updatedAt: now,
@@ -348,14 +344,20 @@ export const update = mutation({
     firstName: v.optional(v.string()),
     middleName: v.optional(v.string()),
     lastName: v.optional(v.string()),
+    suffix: v.optional(v.string()), // Optional suffix
     sex: v.optional(
       v.union(v.literal("male"), v.literal("female"), v.literal("other"))
     ),
     birthdate: v.optional(v.number()),
-    zone: v.optional(v.string()),
     purok: v.optional(v.string()),
-    address: v.optional(v.string()),
-    disability: v.optional(v.boolean()),
+    seniorOrPwd: v.optional(
+      v.union(
+        v.literal("none"),
+        v.literal("senior"),
+        v.literal("pwd"),
+        v.literal("both")
+      )
+    ),
     status: v.optional(
       v.union(
         v.literal("resident"),

@@ -29,12 +29,16 @@ export default defineSchema({
     firstName: v.string(),
     middleName: v.string(),
     lastName: v.string(),
+    suffix: v.optional(v.string()), // Optional suffix (e.g., Jr., Sr., III)
     sex: v.union(v.literal("male"), v.literal("female"), v.literal("other")),
     birthdate: v.number(), // Timestamp
-    zone: v.string(),
     purok: v.string(),
-    address: v.string(),
-    disability: v.boolean(),
+    seniorOrPwd: v.union(
+      v.literal("none"),
+      v.literal("senior"),
+      v.literal("pwd"),
+      v.literal("both")
+    ),
     status: v.union(
       v.literal("resident"),
       v.literal("deceased"),
@@ -46,9 +50,8 @@ export default defineSchema({
   })
     .index("by_residentId", ["residentId"]) // Unique index for barcode lookup
     .index("by_status", ["status"]) // For filtering by status
-    .index("by_zone", ["zone"]) // For zone-based queries
     .index("by_name", ["lastName", "firstName"]) // For alphabetical sorting
-    .index("by_status_zone", ["status", "zone"]), // Composite for filtered zone queries
+    .index("by_status_zone", ["status", "purok"]), // Composite for filtered purok queries (keeping for compatibility)
 
   // Document Types Configuration
   documentTypes: defineTable({

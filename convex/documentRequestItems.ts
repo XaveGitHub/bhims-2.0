@@ -20,24 +20,24 @@ export const listByRequest = query({
   },
   handler: async (ctx, args) => {
     if (args.status) {
-      // Use composite index for efficient filtering
+      // ✅ OPTIMIZED: Use composite index for efficient filtering
       return await ctx.db
         .query("documentRequestItems")
         .withIndex("by_documentRequestId_status", (q) =>
           q.eq("documentRequestId", args.documentRequestId).eq("status", args.status!)
         )
         .order("asc")
-        .collect()
+        .take(50) // ✅ OPTIMIZED: Limit items per request (should never exceed this)
     }
 
-    // Return all items for the request
+    // ✅ OPTIMIZED: Return all items for the request (with limit)
     return await ctx.db
       .query("documentRequestItems")
       .withIndex("by_documentRequestId", (q) =>
         q.eq("documentRequestId", args.documentRequestId)
       )
       .order("asc")
-      .collect()
+      .take(50) // ✅ OPTIMIZED: Limit items per request (should never exceed this)
   },
 })
 
@@ -162,13 +162,13 @@ export const markAllPrinted = mutation({
       throw new Error("Unauthorized: Only staff can mark items as printed")
     }
 
-    // Get all items for this request
+    // ✅ OPTIMIZED: Get all items for this request (with limit)
     const items = await ctx.db
       .query("documentRequestItems")
       .withIndex("by_documentRequestId", (q) =>
         q.eq("documentRequestId", args.documentRequestId)
       )
-      .collect()
+      .take(50) // ✅ OPTIMIZED: Limit items per request (should never exceed this)
 
     const now = Date.now()
     for (const item of items) {
