@@ -436,22 +436,26 @@ function ResidentsManagementSection() {
                 </TableHeader>
                 <TableBody>
                   {filteredResidents.map((resident: any) => (
-                    <TableRow key={resident._id}>
-                      <TableCell className="font-mono text-sm">
+                    <TableRow 
+                      key={resident._id}
+                      className="cursor-pointer hover:bg-gray-50 group"
+                      onClick={() => navigate({ to: `/admin/residents/${resident._id}` })}
+                    >
+                      <TableCell className="font-mono text-sm group-hover:underline">
                         {resident.residentId}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="group-hover:underline">
                         {resident.firstName} {resident.middleName} {resident.lastName}
                         {(resident as any).suffix && ` ${(resident as any).suffix}`}
                       </TableCell>
-                      <TableCell>{resident.purok}</TableCell>
-                      <TableCell className="capitalize">{resident.sex}</TableCell>
+                      <TableCell className="group-hover:underline">{resident.purok}</TableCell>
+                      <TableCell className="capitalize group-hover:underline">{resident.sex}</TableCell>
                       <TableCell>
                         <Badge variant={getStatusBadgeVariant(resident.status)}>
                           {resident.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon">
