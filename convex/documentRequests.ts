@@ -273,7 +273,7 @@ async function generateRequestNumber(ctx: any): Promise<string> {
   // ✅ OPTIMIZED: Query only today's requests using by_requestedAt index
   const todayRequests = await ctx.db
     .query("documentRequests")
-    .withIndex("by_requestedAt", (q) =>
+    .withIndex("by_requestedAt", (q: any) =>
       q.gte("requestedAt", todayStart.getTime()).lte("requestedAt", todayEnd.getTime())
     )
     .collect()
