@@ -231,6 +231,13 @@ function ResidentsManagementSection() {
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [residentToEdit, setResidentToEdit] = useState<Doc<'residents'> | null>(null)
+  // ✅ OPTIMIZATION: Refresh key to force query refetch after mutations
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  // ✅ OPTIMIZATION: Helper to refresh queries after mutations
+  const refreshQueries = () => {
+    setRefreshKey((prev) => prev + 1)
+  }
 
   const PAGE_SIZE = 50 // ✅ OPTIMIZED: 50 records per page
 
@@ -252,6 +259,7 @@ function ResidentsManagementSection() {
   const offset = (currentPage - 1) * PAGE_SIZE
 
   // ✅ OPTIMIZED: Query residents with all filters (server-side: status, gender)
+  // ✅ Added refreshKey to query args to force refetch after mutations
   const residents = useQuery(
     api.residents.list,
     shouldSkipQuery
@@ -261,10 +269,12 @@ function ResidentsManagementSection() {
           gender: genderFilter !== 'all' ? (genderFilter as any) : undefined,
           limit: PAGE_SIZE,
           offset: offset,
+          _refreshKey: refreshKey, // Force refetch when this changes
         }
   )
 
   // ✅ OPTIMIZED: Search query with debouncing (only queries after user stops typing)
+  // ✅ Added refreshKey to query args to force refetch after mutations
   const searchResults = useQuery(
     api.residents.search,
     shouldSkipQuery || !debouncedSearchTerm.trim()
@@ -272,6 +282,7 @@ function ResidentsManagementSection() {
       : {
           searchTerm: debouncedSearchTerm.trim(),
           limit: PAGE_SIZE,
+          _refreshKey: refreshKey, // Force refetch when this changes
         }
   )
 
@@ -313,6 +324,8 @@ function ResidentsManagementSection() {
       toast.success('Resident deleted successfully')
       setDeleteDialogOpen(false)
       setResidentToDelete(null)
+      // ✅ OPTIMIZATION: Refresh queries after successful deletion
+      refreshQueries()
     } catch (error) {
       toast.error('Failed to delete resident')
     } finally {
@@ -518,7 +531,10 @@ function ResidentsManagementSection() {
         <AddResidentDialog
           open={addDialogOpen}
           onOpenChange={setAddDialogOpen}
-          onCreate={createResident}
+          onCreate={async (args) => {
+            await createResident(args)
+            refreshQueries() // ✅ Refresh queries after creation
+          }}
         />
 
         {/* Edit Resident Dialog */}
@@ -527,7 +543,10 @@ function ResidentsManagementSection() {
             open={editDialogOpen}
             onOpenChange={setEditDialogOpen}
             resident={residentToEdit}
-            onUpdate={updateResident}
+            onUpdate={async (args) => {
+              await updateResident(args)
+              refreshQueries() // ✅ Refresh queries after update
+            }}
             onClose={() => setResidentToEdit(null)}
           />
         )}

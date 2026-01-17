@@ -28,6 +28,7 @@ export const list = query({
     gender: v.optional(v.union(v.literal("male"), v.literal("female"), v.literal("other"))),
     limit: v.optional(v.number()),
     offset: v.optional(v.number()),
+    _refreshKey: v.optional(v.number()), // ✅ OPTIMIZATION: Ignored, used for client-side cache invalidation
   },
   handler: async (ctx, args) => {
     const limit = args.limit ?? 50
@@ -106,6 +107,7 @@ export const search = query({
   args: {
     searchTerm: v.string(),
     limit: v.optional(v.number()),
+    _refreshKey: v.optional(v.number()), // ✅ OPTIMIZATION: Ignored, used for client-side cache invalidation
   },
   handler: async (ctx, args) => {
     const term = args.searchTerm.toLowerCase().trim()
