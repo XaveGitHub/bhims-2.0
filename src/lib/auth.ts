@@ -23,9 +23,11 @@ export function useUserRole(): UserRole | undefined {
   // ✅ SAFETY: Only query Convex if auth is loaded AND user is signed in
   // Prevents queries from running before auth token is ready (prevents ctx.auth errors)
   // Convex caches this query, so multiple components share the same result
+  // ✅ OPTIMIZED: Don't skip query if user is signed in (even if authLoaded is briefly false during navigation)
+  // This allows Convex to use cached data immediately instead of showing loading state
   return useQuery(
     api.users.getUserRole,
-    authLoaded && isSignedIn ? {} : 'skip'
+    isSignedIn ? {} : 'skip'
   )
 }
 
@@ -48,7 +50,10 @@ export function useRequireRole(allowedRoles: UserRole[]) {
   const isPending =
     authLoaded && isSignedIn && userRole !== undefined && userRole === null
 
-  const isLoading = !authLoaded || userRole === undefined
+  // ✅ OPTIMIZED: Only consider loading if userRole is undefined AND we're signed in
+  // This allows cached data to be used during navigation transitions
+  // Don't block rendering just because authLoaded is briefly false during navigation
+  const isLoading = isSignedIn && userRole === undefined
 
   return {
     isAuthorized,

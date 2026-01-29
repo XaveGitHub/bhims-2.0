@@ -27,24 +27,23 @@ function AdminHeader() {
   const { isLoaded: authLoaded, isSignedIn } = useAuth()
   const userRole = useUserRole()
 
-  // ✅ SIMPLIFIED: Dashboard contains everything (statistics + residents management)
-  // Only show essential navigation items
+  // Navigation items - different URLs for admin vs superadmin
   const menuItems = [
     {
       title: 'Dashboard',
-      url: '/admin/dashboard',
+      url: userRole === 'superadmin' ? '/superadmin/dashboard' : '/admin/dashboard',
       icon: LayoutDashboard,
       roles: ['admin', 'superadmin'] as const,
     },
     {
       title: 'Settings',
-      url: '/admin/settings',
+      url: '/superadmin/settings',
       icon: Settings,
       roles: ['superadmin'] as const,
     },
     {
       title: 'Transactions',
-      url: '/admin/transactions',
+      url: '/superadmin/transactions',
       icon: FileText,
       roles: ['superadmin'] as const,
     },
@@ -73,9 +72,14 @@ function AdminHeader() {
       <div className="container mx-auto px-4 py-3">
         <div className="flex items-center justify-between">
           {/* Logo/Brand */}
-          <Link to="/admin/dashboard" className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
+          <Link
+            to={userRole === 'superadmin' ? '/superadmin/dashboard' : '/admin/dashboard'}
+            className="flex items-center space-x-2 hover:opacity-80 transition-opacity"
+          >
             <span className="text-xl font-bold text-blue-600">BHIMS 2.0</span>
-            <span className="text-sm text-gray-600 hidden sm:inline">Admin</span>
+            <span className="text-sm text-gray-600 hidden sm:inline">
+              {userRole === 'superadmin' ? 'Superadmin' : 'Admin'}
+            </span>
           </Link>
 
           {/* Navigation */}

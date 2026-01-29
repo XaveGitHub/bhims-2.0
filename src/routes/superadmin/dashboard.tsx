@@ -5,7 +5,6 @@ import { useAuth } from '@clerk/tanstack-react-start'
 import { api } from '../../../convex/_generated/api'
 import type { Doc } from '../../../convex/_generated/dataModel'
 import { RouteGuard } from '@/lib/route-guards'
-import { AdminHeaderLayout } from '@/components/AdminHeader'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -51,49 +50,71 @@ import {
   FieldLabel,
 } from '@/components/ui/field'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { SuperadminSidebarLayout } from '@/components/SuperadminSidebar'
+import { SuperadminHeader } from '@/components/SuperadminHeader'
 
-export const Route = createFileRoute('/admin/dashboard')({
-  component: AdminDashboardPage,
+export const Route = createFileRoute('/superadmin/dashboard')({
+  component: SuperadminDashboardPage,
+  // Delay showing loading spinner to allow cached data to display first
+  // pendingMs: 200 means wait 200ms before showing loading state
+  // pendingMinMs: 100 means show loading for at least 100ms once it appears
+  pendingMs: 200,
+  pendingMinMs: 100,
+  pendingComponent: () => (
+    <SuperadminSidebarLayout>
+      <SuperadminHeader />
+      <div className="flex flex-1 flex-col">
+        <div className="@container/main flex flex-1 flex-col gap-2">
+          <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6 px-4 lg:px-6">
+            <div className="flex items-center justify-center h-64">
+              <Loader2 className="w-8 h-8 text-muted-foreground animate-spin" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </SuperadminSidebarLayout>
+  ),
 })
 
-function AdminDashboardPage() {
+function SuperadminDashboardPage() {
   return (
-    <RouteGuard allowedRoles={['admin']}>
-      <AdminDashboardContent />
+    <RouteGuard allowedRoles={['superadmin']}>
+      <SuperadminSidebarLayout>
+        <SuperadminHeader />
+        <div className="flex flex-1 flex-col">
+          <div className="@container/main flex flex-1 flex-col gap-2">
+            <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6 px-4 lg:px-6">
+              <SuperadminDashboardContent />
+            </div>
+          </div>
+        </div>
+      </SuperadminSidebarLayout>
     </RouteGuard>
   )
 }
 
-export function AdminDashboardContent() {
+function SuperadminDashboardContent() {
   const { isLoaded: authLoaded, isSignedIn } = useAuth()
   
-  // ✅ SAFETY: Only query when auth is loaded and user is signed in
-  // This prevents queries from running before auth token is ready (prevents ctx.auth errors)
-  const shouldSkipQuery = !authLoaded || !isSignedIn
+  // ✅ OPTIMIZED: Only skip query when auth is loaded AND user is not signed in
+  // This allows Convex to use cached data during navigation transitions
+  // Don't skip when auth is still loading - Convex can handle it and use cache
+  const shouldSkipQuery = authLoaded && !isSignedIn
   const stats = useQuery(
     api.statistics.getDashboardStats,
     shouldSkipQuery ? 'skip' : {}
   )
 
-  // Loading state - wait for auth to load first
-  if (!authLoaded) {
+  // Only show loading spinner on true initial load (when auth is not loaded AND no cached data)
+  // This prevents showing loading spinner on every navigation
+  const isInitialLoad = !authLoaded && stats === undefined
+  
+  if (isInitialLoad) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="flex items-center justify-center h-64">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 mx-auto mb-4 text-gray-400 animate-spin" />
-          <p className="text-gray-600">Loading authentication...</p>
-        </div>
-      </div>
-    )
-  }
-
-  // Loading state - query is loading
-  if (stats === undefined) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 mx-auto mb-4 text-gray-400 animate-spin" />
-          <p className="text-gray-600">Loading dashboard...</p>
+          <Loader2 className="w-8 h-8 mx-auto mb-4 text-muted-foreground animate-spin" />
+          <p className="text-sm text-muted-foreground">Loading dashboard...</p>
         </div>
       </div>
     )
@@ -102,27 +123,25 @@ export function AdminDashboardContent() {
   // Error state - query returned null (auth error or unauthorized)
   if (!stats) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="flex items-center justify-center h-64">
         <div className="text-center">
-          <p className="text-gray-600 mb-2">Failed to load statistics</p>
-          <p className="text-sm text-gray-500">Please refresh the page or contact support if the issue persists.</p>
+          <p className="text-sm text-muted-foreground mb-2">Failed to load statistics</p>
+          <p className="text-xs text-muted-foreground">Please refresh the page or contact support if the issue persists.</p>
         </div>
       </div>
     )
   }
 
   return (
-    <AdminHeaderLayout>
-      <div className="min-h-screen bg-gray-50">
-        <div className="container mx-auto px-4 py-6">
-        {/* Page Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-          <p className="text-gray-600 mt-1">Resident Management & Statistics</p>
-        </div>
+    <>
+      {/* Page Header */}
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <p className="text-muted-foreground mt-1">Resident Management & Statistics</p>
+      </div>
 
         {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           {/* Total Residents Card */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -213,11 +232,13 @@ export function AdminDashboardContent() {
 
         {/* Residents Management Section */}
         <ResidentsManagementSection />
-        </div>
-      </div>
-    </AdminHeaderLayout>
+    </>
   )
 }
+
+// Import shared components from admin dashboard
+// We'll need to copy these components or import them
+// For now, let's copy the essential parts
 
 // Pending Resident Card Component (separate to use hooks properly)
 function PendingResidentCard({
@@ -230,7 +251,8 @@ function PendingResidentCard({
   onReject: () => void
 }) {
   const { isLoaded: authLoaded, isSignedIn } = useAuth()
-  const shouldSkipQuery = !authLoaded || !isSignedIn
+  // ✅ OPTIMIZED: Only skip query when auth is loaded AND user is not signed in
+  const shouldSkipQuery = authLoaded && !isSignedIn
 
   // Check duplicates for this resident
   const duplicates = useQuery(
@@ -362,7 +384,6 @@ function PendingResidentConfirmationsSection() {
   const [residentToReject, setResidentToReject] = useState<Doc<'residents'> | null>(null)
   const [isApproving, setIsApproving] = useState(false)
   const [isRejecting, setIsRejecting] = useState(false)
-  const [refreshKey, setRefreshKey] = useState(0)
 
   const shouldSkipQuery = !authLoaded || !isSignedIn
   
@@ -376,7 +397,7 @@ function PendingResidentConfirmationsSection() {
   const rejectPending = useMutation(api.residents.rejectPending)
 
   const refreshQueries = () => {
-    setRefreshKey((prev) => prev + 1)
+    // Convex queries will automatically refetch when mutations complete
   }
 
   const handleApprove = async () => {
@@ -554,7 +575,7 @@ function PendingResidentConfirmationsSection() {
   )
 }
 
-// Residents Management Component
+// Residents Management Component - Copy from admin dashboard but update routes
 function ResidentsManagementSection() {
   const { isLoaded: authLoaded, isSignedIn } = useAuth()
   const navigate = useNavigate()
@@ -569,35 +590,30 @@ function ResidentsManagementSection() {
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [residentToEdit, setResidentToEdit] = useState<Doc<'residents'> | null>(null)
-  // ✅ OPTIMIZATION: Refresh key to force query refetch after mutations
   const [refreshKey, setRefreshKey] = useState(0)
 
-  // ✅ OPTIMIZATION: Helper to refresh queries after mutations
   const refreshQueries = () => {
     setRefreshKey((prev) => prev + 1)
   }
 
-  const PAGE_SIZE = 50 // ✅ OPTIMIZED: 50 records per page
+  const PAGE_SIZE = 50
 
-  // ✅ OPTIMIZED: Debounce search input (300ms delay)
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchTerm(searchTerm)
-      setCurrentPage(1) // Reset to first page when search changes
+      setCurrentPage(1)
     }, 300)
     return () => clearTimeout(timer)
   }, [searchTerm])
 
-  // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1)
   }, [statusFilter, genderFilter])
 
-  const shouldSkipQuery = !authLoaded || !isSignedIn
+  // ✅ OPTIMIZED: Only skip query when auth is loaded AND user is not signed in
+  const shouldSkipQuery = authLoaded && !isSignedIn
   const offset = (currentPage - 1) * PAGE_SIZE
 
-  // ✅ OPTIMIZED: Query residents with all filters (server-side: status, gender)
-  // ✅ Added refreshKey to query args to force refetch after mutations
   const residents = useQuery(
     api.residents.list,
     shouldSkipQuery
@@ -607,12 +623,10 @@ function ResidentsManagementSection() {
           gender: genderFilter !== 'all' ? (genderFilter as any) : undefined,
           limit: PAGE_SIZE,
           offset: offset,
-          _refreshKey: refreshKey, // Force refetch when this changes
+          _refreshKey: refreshKey,
         }
   )
 
-  // ✅ OPTIMIZED: Search query with debouncing (only queries after user stops typing)
-  // ✅ Added refreshKey to query args to force refetch after mutations
   const searchResults = useQuery(
     api.residents.search,
     shouldSkipQuery || !debouncedSearchTerm.trim()
@@ -620,7 +634,7 @@ function ResidentsManagementSection() {
       : {
           searchTerm: debouncedSearchTerm.trim(),
           limit: PAGE_SIZE,
-          _refreshKey: refreshKey, // Force refetch when this changes
+          _refreshKey: refreshKey,
         }
   )
 
@@ -628,7 +642,6 @@ function ResidentsManagementSection() {
   const createResident = useMutation(api.residents.create)
   const updateResident = useMutation(api.residents.update)
 
-  // Determine which data to display
   const displayResidents = useMemo((): Doc<'residents'>[] => {
     if (debouncedSearchTerm.trim()) {
       return (searchResults as Doc<'residents'>[]) || []
@@ -636,10 +649,7 @@ function ResidentsManagementSection() {
     return (residents as Doc<'residents'>[]) || []
   }, [debouncedSearchTerm, searchResults, residents])
 
-  // ✅ OPTIMIZED: Client-side filtering only for search results (when using search)
-  // For list queries, filtering is done server-side via Convex
   const filteredResidents = useMemo(() => {
-    // If using search, apply client-side filters
     if (debouncedSearchTerm.trim()) {
       let filtered = displayResidents
       if (statusFilter !== 'all') {
@@ -647,11 +657,9 @@ function ResidentsManagementSection() {
       }
       return filtered
     }
-    // For list queries, server-side filtering is already applied
     return displayResidents
   }, [displayResidents, statusFilter, debouncedSearchTerm])
 
-  // Calculate pagination info
   const hasMore = filteredResidents.length === PAGE_SIZE
 
   const handleDelete = async () => {
@@ -662,7 +670,6 @@ function ResidentsManagementSection() {
       toast.success('Resident deleted successfully')
       setDeleteDialogOpen(false)
       setResidentToDelete(null)
-      // ✅ OPTIMIZATION: Refresh queries after successful deletion
       refreshQueries()
     } catch (error) {
       toast.error('Failed to delete resident')
@@ -777,7 +784,7 @@ function ResidentsManagementSection() {
                     <TableRow 
                       key={resident._id}
                       className="cursor-pointer hover:bg-gray-50 group"
-                      onClick={() => navigate({ to: `/admin/residents/${resident._id}` })}
+                      onClick={() => navigate({ to: `/superadmin/residents/${resident._id}` })}
                     >
                       <TableCell className="font-mono text-sm group-hover:underline">
                         {resident.residentId}
@@ -802,7 +809,7 @@ function ResidentsManagementSection() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
-                              onClick={() => navigate({ to: `/admin/residents/${resident._id}` })}
+                              onClick={() => navigate({ to: `/superadmin/residents/${resident._id}` })}
                             >
                               <Eye className="h-4 w-4 mr-2" />
                               View
@@ -835,7 +842,7 @@ function ResidentsManagementSection() {
               </Table>
             </div>
 
-            {/* ✅ Pagination Controls */}
+            {/* Pagination Controls */}
             {!debouncedSearchTerm && (
               <div className="flex items-center justify-between mt-4">
                 <p className="text-sm text-muted-foreground">
@@ -875,7 +882,7 @@ function ResidentsManagementSection() {
           onOpenChange={setAddDialogOpen}
           onCreate={async (args) => {
             await createResident(args)
-            refreshQueries() // ✅ Refresh queries after creation
+            refreshQueries()
           }}
         />
 
@@ -887,7 +894,7 @@ function ResidentsManagementSection() {
             resident={residentToEdit}
             onUpdate={async (args) => {
               await updateResident(args)
-              refreshQueries() // ✅ Refresh queries after update
+              refreshQueries()
             }}
             onClose={() => setResidentToEdit(null)}
           />
@@ -897,7 +904,6 @@ function ResidentsManagementSection() {
         <Dialog
           open={deleteDialogOpen}
           onOpenChange={(newOpen) => {
-            // Prevent closing dialog during deletion
             if (!isDeleting) {
               setDeleteDialogOpen(newOpen)
             }
@@ -952,6 +958,7 @@ function calculateAge(birthdate: number): number {
 }
 
 // Add Resident Dialog Component
+
 function AddResidentDialog({
   open,
   onOpenChange,
@@ -1335,7 +1342,9 @@ function AddResidentDialog({
   )
 }
 
+
 // Edit Resident Dialog Component
+
 function EditResidentDialog({
   open,
   onOpenChange,

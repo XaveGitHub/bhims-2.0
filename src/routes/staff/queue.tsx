@@ -137,7 +137,7 @@ function StaffQueueContent() {
                               : 'Guest'}
                           </p>
                           <p className="text-xs text-gray-600">
-                            {request.items?.length || 0} {request.items?.length === 1 ? 'certificate' : 'certificates'} • ₱{((request.totalPrice || 0) / 100).toFixed(2)}
+                            {request.items?.length || 0} {request.items?.length === 1 ? 'service' : 'services'} • ₱{((request.totalPrice || 0) / 100).toFixed(2)}
                           </p>
                           <Button
                             size="sm"
@@ -188,7 +188,7 @@ function StaffQueueContent() {
                                   : 'Guest'}
                               </span>
                               <span>
-                                {request.items?.length || 0} {request.items?.length === 1 ? 'certificate' : 'certificates'}
+                                {request.items?.length || 0} {request.items?.length === 1 ? 'service' : 'services'}
                               </span>
                               <span>₱{((request.totalPrice || 0) / 100).toFixed(2)}</span>
                               <span className="text-gray-500">{formatTime(request.requestedAt)}</span>

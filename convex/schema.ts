@@ -103,7 +103,7 @@ export default defineSchema({
   queue: defineTable({
     documentRequestId: v.id("documentRequests"), // FK to documentRequests (unique)
     queueNumber: v.string(), // Format: Q-001, Q-002 (resets daily)
-    serviceType: v.string(), // Default: 'certificate'
+    serviceType: v.string(), // Default: 'service'
     status: v.union(
       v.literal("waiting"),
       v.literal("serving"),

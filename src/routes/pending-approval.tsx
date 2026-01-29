@@ -37,8 +37,10 @@ function PendingApprovalPage() {
     if (userRole !== null) {
       if (userRole === 'staff') {
         navigate({ to: '/staff/queue' })
-      } else if (userRole === 'admin' || userRole === 'superadmin') {
+      } else if (userRole === 'admin') {
         navigate({ to: '/admin/dashboard' })
+      } else if (userRole === 'superadmin') {
+        navigate({ to: '/superadmin/dashboard' })
       }
     }
   }, [authLoaded, isSignedIn, userRole, navigate])

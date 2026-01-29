@@ -37,7 +37,7 @@ export const submitRequest = mutation({
       })
     ),
     
-    // Document request items (certificates)
+    // Document request items (services)
     items: v.array(
       v.object({
         documentTypeId: v.id("documentTypes"),
@@ -173,7 +173,7 @@ export const submitRequest = mutation({
     await ctx.db.insert("queue", {
       documentRequestId,
       queueNumber,
-      serviceType: "certificate",
+      serviceType: "service",
       status: "waiting",
       createdAt: now,
     })

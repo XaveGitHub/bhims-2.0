@@ -149,7 +149,7 @@ export const markPrinted = mutation({
 
 /**
  * Mark all items in a request as printed
- * Used when staff prints all certificates at once
+ * Used when staff prints all services at once
  */
 export const markAllPrinted = mutation({
   args: { documentRequestId: v.id("documentRequests") },
@@ -186,7 +186,7 @@ export const markAllPrinted = mutation({
 
 /**
  * Create multiple document request items at once
- * Used when creating a request with multiple certificates
+ * Used when creating a request with multiple services
  */
 export const createBatch = mutation({
   args: {

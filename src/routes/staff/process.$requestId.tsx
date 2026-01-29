@@ -42,7 +42,7 @@ function StaffProcessContent() {
 
   // State for editable resident info
   const [residentData, setResidentData] = useState<any>(null)
-  const [selectedCertificateIndex, setSelectedCertificateIndex] = useState(0)
+  const [selectedServiceIndex, setSelectedServiceIndex] = useState(0)
   const [purposeValues, setPurposeValues] = useState<Record<string, string>>({})
 
   // Initialize resident data and purpose values when request data loads
@@ -57,13 +57,13 @@ function StaffProcessContent() {
       })
       setPurposeValues(purposes)
     }
-    // Auto-select first pending certificate
+    // Auto-select first pending service
     if (requestData?.items) {
       const firstPending = requestData.items.findIndex(
         (item: any) => item.status === 'pending'
       )
       if (firstPending !== -1) {
-        setSelectedCertificateIndex(firstPending)
+        setSelectedServiceIndex(firstPending)
       }
     }
   }, [requestData])
@@ -99,7 +99,7 @@ function StaffProcessContent() {
   }
 
   const { request, resident: initialResident, items, queue } = requestData
-  const selectedItem = items[selectedCertificateIndex]
+  const selectedItem = items[selectedServiceIndex]
   const allPrinted = items.every((item: any) => item.status === 'printed')
 
   // Handle resident info update
@@ -141,7 +141,7 @@ function StaffProcessContent() {
       // TODO: Generate PDF here
       // For now, just mark as printed
       await markPrinted({ id: item._id })
-      toast.success(`${item.documentType?.name || 'Certificate'} printed successfully`)
+      toast.success(`${item.documentType?.name || 'Service'} printed successfully`)
 
       // Auto-advance to next pending certificate
       // Note: requestData will update automatically via Convex real-time subscription
@@ -149,27 +149,27 @@ function StaffProcessContent() {
     } catch (error) {
       console.error('Error printing certificate:', error)
       toast.error(
-        error instanceof Error ? error.message : 'Failed to print certificate'
+        error instanceof Error ? error.message : 'Failed to print service'
       )
     }
   }
 
-  // Auto-advance to next pending certificate when items update after printing
+  // Auto-advance to next pending service when items update after printing
   useEffect(() => {
     if (!requestData?.items) return
 
     // Check if current selected item is now printed
-    const currentItem = requestData.items[selectedCertificateIndex]
+    const currentItem = requestData.items[selectedServiceIndex]
     if (currentItem?.status === 'printed') {
-      // Find next pending certificate
+      // Find next pending service
       const nextPendingIndex = requestData.items.findIndex(
-        (i: any, idx: number) => idx > selectedCertificateIndex && i.status === 'pending'
+        (i: any, idx: number) => idx > selectedServiceIndex && i.status === 'pending'
       )
       if (nextPendingIndex !== -1) {
-        setSelectedCertificateIndex(nextPendingIndex)
+        setSelectedServiceIndex(nextPendingIndex)
       }
     }
-  }, [requestData?.items, selectedCertificateIndex])
+  }, [requestData?.items, selectedServiceIndex])
 
   // Handle mark all as done
   const handleMarkAsClaim = async () => {
@@ -373,17 +373,17 @@ function StaffProcessContent() {
               </CardContent>
             </Card>
 
-            {/* Certificates List */}
+            {/* Services List */}
             <Card>
               <CardHeader>
-                <CardTitle>Certificates</CardTitle>
+                <CardTitle>Services</CardTitle>
                 <p className="text-sm text-gray-500">
-                  Process certificates one at a time. Select a certificate to edit purpose and print.
+                  Process services one at a time. Select a service to edit purpose and print.
                 </p>
               </CardHeader>
               <CardContent className="space-y-3">
                 {items.map((item: any, index: number) => {
-                  const isSelected = index === selectedCertificateIndex
+                  const isSelected = index === selectedServiceIndex
                   const isPrinted = item.status === 'printed'
 
                   return (
@@ -394,13 +394,13 @@ function StaffProcessContent() {
                           ? 'border-blue-500 bg-blue-50'
                           : 'border-gray-200 hover:border-gray-300'
                       } ${isPrinted ? 'opacity-75' : ''}`}
-                      onClick={() => !isPrinted && setSelectedCertificateIndex(index)}
+                      onClick={() => !isPrinted && setSelectedServiceIndex(index)}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-2">
                             <h3 className="font-medium">
-                              {item.documentType?.name || 'Unknown Certificate'}
+                              {item.documentType?.name || 'Unknown Service'}
                             </h3>
                             <Badge
                               variant={isPrinted ? 'default' : 'secondary'}
@@ -441,7 +441,7 @@ function StaffProcessContent() {
                                 onBlur={() =>
                                   handlePurposeUpdate(item._id, purposeValues[item._id] || '')
                                 }
-                                placeholder="Enter purpose for this certificate"
+                                placeholder="Enter purpose for this service"
                                 rows={2}
                               />
                               <Button
@@ -457,7 +457,7 @@ function StaffProcessContent() {
 
                           {isSelected && isPrinted && (
                             <p className="text-sm text-gray-500 mt-2">
-                              This certificate has been printed.
+                              This service has been printed.
                             </p>
                           )}
                         </div>
@@ -490,9 +490,9 @@ function StaffProcessContent() {
           <div className="lg:col-span-1">
             <Card className="sticky top-6">
               <CardHeader>
-                <CardTitle>Certificate Preview</CardTitle>
+                <CardTitle>Service Preview</CardTitle>
                 <p className="text-sm text-gray-500">
-                  {selectedItem?.documentType?.name || 'Select a certificate'}
+                  {selectedItem?.documentType?.name || 'Select a service'}
                 </p>
               </CardHeader>
               <CardContent>
@@ -501,16 +501,16 @@ function StaffProcessContent() {
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 bg-white min-h-[400px]">
                       <div className="text-center text-gray-500">
                         <p className="text-lg font-medium mb-2">
-                          {selectedItem.documentType?.name || 'Certificate'}
+                          {selectedItem.documentType?.name || 'Service'}
                         </p>
                         <p className="text-sm">
                           Live preview will appear here
                         </p>
                         <p className="text-xs mt-4 text-gray-400">
-                          TODO: Implement certificate template rendering
+                          TODO: Implement service template rendering
                         </p>
                       </div>
-                      {/* TODO: Render actual certificate template here */}
+                      {/* TODO: Render actual service template here */}
                       {residentData && (
                         <div className="mt-4 text-left text-sm space-y-1">
                           <p>
@@ -533,7 +533,7 @@ function StaffProcessContent() {
                   </div>
                 ) : (
                   <div className="text-center text-gray-500 py-8">
-                    <p>No certificate selected</p>
+                    <p>No service selected</p>
                   </div>
                 )}
               </CardContent>

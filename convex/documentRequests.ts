@@ -11,7 +11,8 @@ import { getCurrentUser } from "./users"
 
 /**
  * List all document requests with optional filtering
- * Uses by_status index for efficient filtering
+ * Uses indexes for efficient filtering
+ * Supports filtering by status, date range, resident, and document type
  */
 export const list = query({
   args: {
@@ -24,24 +25,80 @@ export const list = query({
         v.literal("cancelled")
       )
     ),
+    startDate: v.optional(v.number()), // Timestamp
+    endDate: v.optional(v.number()), // Timestamp
+    residentId: v.optional(v.id("residents")),
+    documentTypeId: v.optional(v.id("documentTypes")),
     limit: v.optional(v.number()),
+    offset: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const limit = args.limit ?? 50
+    const offset = args.offset ?? 0
+
+    let requests: any[]
+
+    // Use appropriate index based on filters
     if (args.status) {
-      // Use composite index for efficient filtering and sorting
-      return await ctx.db
+      // Use composite index for status + date filtering
+      requests = await ctx.db
         .query("documentRequests")
         .withIndex("by_status_requestedAt", (q) => q.eq("status", args.status!))
         .order("desc") // Newest first
-        .take(args.limit ?? 100)
+        .take((limit + offset) * 2) // Fetch more to account for date/resident filtering
+    } else if (args.residentId) {
+      // Use resident index
+      requests = await ctx.db
+        .query("documentRequests")
+        .withIndex("by_residentId", (q) => q.eq("residentId", args.residentId!))
+        .order("desc")
+        .take((limit + offset) * 2)
+    } else {
+      // Default: use requestedAt index
+      requests = await ctx.db
+        .query("documentRequests")
+        .withIndex("by_requestedAt")
+        .order("desc")
+        .take((limit + offset) * 2)
     }
 
-    // Default: return all requests (limited, newest first)
-    return await ctx.db
-      .query("documentRequests")
-      .withIndex("by_requestedAt")
-      .order("desc")
-      .take(args.limit ?? 100)
+    // Apply date range filter if provided
+    if (args.startDate || args.endDate) {
+      requests = requests.filter((req) => {
+        if (args.startDate && req.requestedAt < args.startDate) return false
+        if (args.endDate && req.requestedAt > args.endDate) return false
+        return true
+      })
+    }
+
+    // If filtering by document type, we need to check documentRequestItems
+    if (args.documentTypeId) {
+      // Get all document request items for these requests
+      const requestIds = requests.map((r) => r._id)
+      const allItems = await Promise.all(
+        requestIds.map((id) =>
+          ctx.db
+            .query("documentRequestItems")
+            .withIndex("by_documentRequestId", (q) => q.eq("documentRequestId", id))
+            .collect()
+        )
+      )
+
+      // Filter requests that have items with the specified document type
+      const filteredRequestIds = new Set(
+        allItems
+          .flatMap((items, idx) =>
+            items.some((item) => item.documentTypeId === args.documentTypeId)
+              ? [requestIds[idx]]
+              : []
+          )
+      )
+
+      requests = requests.filter((req) => filteredRequestIds.has(req._id))
+    }
+
+    // Apply pagination
+    return requests.slice(offset, offset + limit)
   },
 })
 
@@ -149,6 +206,149 @@ export const listByStatus = query({
       .withIndex("by_status_requestedAt", (q) => q.eq("status", args.status))
       .order("desc") // Newest first
       .take(args.limit ?? 100)
+  },
+})
+
+/**
+ * List document requests with enriched data for transactions page
+ * Returns requests with resident info, document types, and queue info
+ * Supports filtering by status, date range, resident, and document type
+ */
+export const listEnriched = query({
+  args: {
+    status: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("queued"),
+        v.literal("serving"),
+        v.literal("completed"),
+        v.literal("cancelled")
+      )
+    ),
+    startDate: v.optional(v.number()),
+    endDate: v.optional(v.number()),
+    residentId: v.optional(v.id("residents")),
+    documentTypeId: v.optional(v.id("documentTypes")),
+    limit: v.optional(v.number()),
+    offset: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 50
+    const offset = args.offset ?? 0
+
+    // Get filtered requests using the list query logic
+    let requests: any[]
+
+    if (args.status) {
+      requests = await ctx.db
+        .query("documentRequests")
+        .withIndex("by_status_requestedAt", (q) => q.eq("status", args.status!))
+        .order("desc")
+        .take((limit + offset) * 2)
+    } else if (args.residentId) {
+      requests = await ctx.db
+        .query("documentRequests")
+        .withIndex("by_residentId", (q) => q.eq("residentId", args.residentId!))
+        .order("desc")
+        .take((limit + offset) * 2)
+    } else {
+      requests = await ctx.db
+        .query("documentRequests")
+        .withIndex("by_requestedAt")
+        .order("desc")
+        .take((limit + offset) * 2)
+    }
+
+    // Apply date range filter
+    if (args.startDate || args.endDate) {
+      requests = requests.filter((req) => {
+        if (args.startDate && req.requestedAt < args.startDate) return false
+        if (args.endDate && req.requestedAt > args.endDate) return false
+        return true
+      })
+    }
+
+    // Filter by document type if provided
+    if (args.documentTypeId) {
+      const requestIds = requests.map((r) => r._id)
+      const allItems = await Promise.all(
+        requestIds.map((id) =>
+          ctx.db
+            .query("documentRequestItems")
+            .withIndex("by_documentRequestId", (q) => q.eq("documentRequestId", id))
+            .collect()
+        )
+      )
+      const filteredRequestIds = new Set(
+        allItems
+          .flatMap((items, idx) =>
+            items.some((item) => item.documentTypeId === args.documentTypeId)
+              ? [requestIds[idx]]
+              : []
+          )
+      )
+      requests = requests.filter((req) => filteredRequestIds.has(req._id))
+    }
+
+    // Apply pagination
+    const paginatedRequests = requests.slice(offset, offset + limit)
+
+    // Enrich with resident data
+    const residentIds = [...new Set(paginatedRequests.map((r) => r.residentId))]
+    const residents = await Promise.all(residentIds.map((id) => ctx.db.get(id)))
+    const residentMap = new Map(
+      residents.filter(Boolean).map((r: any) => [r._id, r])
+    )
+
+    // Enrich with document request items and document types
+    const requestIds = paginatedRequests.map((r) => r._id)
+    const allItems = await Promise.all(
+      requestIds.map((id) =>
+        ctx.db
+          .query("documentRequestItems")
+          .withIndex("by_documentRequestId", (q) => q.eq("documentRequestId", id))
+          .collect()
+      )
+    )
+
+    const documentTypeIds = [
+      ...new Set(allItems.flatMap((items) => items.map((item: any) => item.documentTypeId))),
+    ]
+    const documentTypes = await Promise.all(
+      documentTypeIds.map((id) => ctx.db.get(id))
+    )
+    const documentTypeMap = new Map(
+      documentTypes.filter(Boolean).map((dt: any) => [dt._id, dt])
+    )
+
+    // Enrich items with document type info
+    const enrichedItemsByRequest = allItems.map((items) =>
+      items.map((item: any) => ({
+        ...item,
+        documentType: documentTypeMap.get(item.documentTypeId) || null,
+      }))
+    )
+
+    // Get queue info
+    const queueItems = await Promise.all(
+      requestIds.map((id) =>
+        ctx.db
+          .query("queue")
+          .withIndex("by_documentRequestId", (q) => q.eq("documentRequestId", id))
+          .first()
+      )
+    )
+    const queueMap = new Map(
+      queueItems.filter(Boolean).map((q: any) => [q.documentRequestId, q])
+    )
+
+    // Combine everything
+    return paginatedRequests.map((request, idx) => ({
+      ...request,
+      resident: residentMap.get(request.residentId) || null,
+      items: enrichedItemsByRequest[idx] || [],
+      queue: queueMap.get(request._id) || null,
+    }))
   },
 })
 
@@ -401,7 +601,7 @@ export const complete = mutation({
 })
 
 /**
- * Mark request as claim (all certificates printed, ready for resident to claim)
+ * Mark request as claim (all services printed, ready for resident to claim)
  * Also updates queue status to "done"
  */
 export const markAsClaim = mutation({
@@ -425,7 +625,7 @@ export const markAsClaim = mutation({
 
     const allPrinted = items.every((item: any) => item.status === "printed")
     if (!allPrinted) {
-      throw new Error("Cannot mark as claim: Not all certificates have been printed")
+      throw new Error("Cannot mark as claim: Not all services have been printed")
     }
 
     // Update request status to "completed" (claim is represented by completed status)

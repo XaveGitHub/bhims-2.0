@@ -29,7 +29,7 @@ export const Route = createFileRoute('/kiosk')({
 type Mode = 'select' | 'lookup' | 'manual'
 
 // Zod Schemas
-const certificateItemSchema = z.object({
+const serviceItemSchema = z.object({
   documentTypeId: z.string().min(1, 'Document type is required'),
   purpose: z.string(),
 })
@@ -90,16 +90,16 @@ function KioskPage() {
     },
   })
 
-  // Certificate Selection Form (shared for lookup and manual step 2)
-  const certificateForm = useForm({
+  // Service Selection Form (shared for lookup and manual step 2)
+  const serviceForm = useForm({
     defaultValues: {
-      certificates: [] as Array<{ documentTypeId: string; purpose: string }>,
+      services: [] as Array<{ documentTypeId: string; purpose: string }>,
     },
     validators: {
       onSubmit: z.object({
-        certificates: z
-          .array(certificateItemSchema)
-          .min(1, 'Please select at least one certificate type'),
+        services: z
+          .array(serviceItemSchema)
+          .min(1, 'Please select at least one service'),
       }),
     },
     onSubmit: async () => {
@@ -148,7 +148,7 @@ function KioskPage() {
   useEffect(() => {
     lookupForm.reset()
     guestForm.reset()
-    certificateForm.reset()
+    serviceForm.reset()
     setManualStep(1)
     setLookupStep(1)
     setSearchResidentId('') // Reset search when mode changes
@@ -157,7 +157,7 @@ function KioskPage() {
   // Calculate total price (for both lookup and manual flows)
   const totalPrice =
     activeDocumentTypes?.reduce((total, docType) => {
-      const cert = certificateForm.state.values.certificates.find(
+      const cert = serviceForm.state.values.services.find(
         (c) => c.documentTypeId === docType._id
       )
       if (cert) {
@@ -167,9 +167,9 @@ function KioskPage() {
     }, 0) || 0
 
   const handleLookupSubmit = async () => {
-    // Validate certificate form
-    await certificateForm.handleSubmit()
-    if (!certificateForm.state.isValid) return
+    // Validate service form
+    await serviceForm.handleSubmit()
+    if (!serviceForm.state.isValid) return
 
     // Check if resident was searched and found
     if (!searchResidentId || !resident || !resident._id) {
@@ -177,14 +177,14 @@ function KioskPage() {
       return
     }
 
-    // Validate purposes for certificates that require them
-    const selectedCertificates = certificateForm.state.values.certificates
-    if (selectedCertificates.length === 0) {
-      toast.error('Please select at least one certificate type')
+    // Validate purposes for services that require them
+    const selectedServices = serviceForm.state.values.services
+    if (selectedServices.length === 0) {
+      toast.error('Please select at least one service')
       return
     }
 
-    for (const cert of selectedCertificates) {
+    for (const cert of selectedServices) {
       const docType = activeDocumentTypes?.find((dt) => dt._id === cert.documentTypeId)
       if (docType?.requiresPurpose && !cert.purpose.trim()) {
         toast.error(`Purpose is required for ${docType.name}`)
@@ -193,7 +193,7 @@ function KioskPage() {
     }
 
     try {
-      const items = selectedCertificates.map((cert) => ({
+      const items = selectedServices.map((cert) => ({
         documentTypeId: cert.documentTypeId as any,
         purpose: cert.purpose.trim(),
       }))
@@ -209,7 +209,7 @@ function KioskPage() {
       setTimeout(() => {
         setQueueNumber(null)
         lookupForm.reset()
-        certificateForm.reset()
+        serviceForm.reset()
         setLookupStep(1)
         setSearchResidentId('') // Reset search
         if (residentIdInputRef.current) {
@@ -223,12 +223,12 @@ function KioskPage() {
   }
 
   const handleManualSubmit = async () => {
-    await certificateForm.handleSubmit()
-    if (!certificateForm.state.isValid) return
+    await serviceForm.handleSubmit()
+    if (!serviceForm.state.isValid) return
 
-    // Validate purposes for certificates that require them
-    const selectedCertificates = certificateForm.state.values.certificates
-    for (const cert of selectedCertificates) {
+    // Validate purposes for services that require them
+    const selectedServices = serviceForm.state.values.services
+    for (const cert of selectedServices) {
       const docType = activeDocumentTypes?.find((dt) => dt._id === cert.documentTypeId)
       if (docType?.requiresPurpose && !cert.purpose.trim()) {
         return // Error will be shown in UI
@@ -239,7 +239,7 @@ function KioskPage() {
       const guestData = guestForm.state.values
       const birthdateTimestamp = new Date(guestData.birthdate).getTime()
 
-      const items = selectedCertificates.map((cert) => ({
+      const items = selectedServices.map((cert) => ({
         documentTypeId: cert.documentTypeId as any,
         purpose: cert.purpose.trim(),
       }))
@@ -264,7 +264,7 @@ function KioskPage() {
       setTimeout(() => {
         setQueueNumber(null)
         guestForm.reset()
-        certificateForm.reset()
+        serviceForm.reset()
         setManualStep(1)
       }, 15000)
     } catch (error) {
@@ -278,7 +278,7 @@ function KioskPage() {
     setMode('select')
     lookupForm.reset()
     guestForm.reset()
-    certificateForm.reset()
+    serviceForm.reset()
     setManualStep(1)
     setLookupStep(1)
     setSearchResidentId('')
@@ -398,7 +398,7 @@ function KioskPage() {
               <CardDescription>
                 {lookupStep === 1
                   ? 'Scan barcode or manually enter your Resident ID (BH-00001)'
-                  : 'Select certificate types'}
+                  : 'Select services'}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -525,9 +525,9 @@ function KioskPage() {
                   </FieldGroup>
                 </form>
               ) : (
-                // STEP 2: Certificate Selection
+                // STEP 2: Service Selection
                 <form
-                  id="certificate-form"
+                  id="service-form"
                   onSubmit={(e) => {
                     e.preventDefault()
                     handleLookupSubmit()
@@ -555,16 +555,16 @@ function KioskPage() {
                       </Card>
                     )}
 
-                    {/* Certificate Selection */}
+                    {/* Service Selection */}
                     {activeDocumentTypes && (
-                      <certificateForm.Field
-                        name="certificates"
+                      <serviceForm.Field
+                        name="services"
                         mode="array"
                         children={(field) => {
                           const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
                           return (
                             <FieldSet>
-                              <FieldLegend variant="label">Select Certificate Types</FieldLegend>
+                              <FieldLegend variant="label">Select Services</FieldLegend>
                               {isInvalid && <FieldError errors={field.state.meta.errors} />}
                               <FieldGroup data-slot="checkbox-group" className="space-y-4 mt-4">
                                 {activeDocumentTypes.map((docType) => {
@@ -634,7 +634,7 @@ function KioskPage() {
                     )}
 
                     {/* Total Price */}
-                    {certificateForm.state.values.certificates.length > 0 && (
+                    {serviceForm.state.values.services.length > 0 && (
                       <div className="bg-blue-50 rounded-lg p-6 text-center border-2 border-blue-200">
                         <p className="text-sm text-gray-600 mb-1">Total Amount</p>
                         <p className="text-4xl font-bold text-blue-600">
@@ -658,9 +658,9 @@ function KioskPage() {
                         type="submit"
                         size="lg"
                         className="flex-1"
-                        disabled={certificateForm.state.values.certificates.length === 0}
+                        disabled={serviceForm.state.values.services.length === 0}
                       >
-                        {certificateForm.state.isSubmitting ? (
+                        {serviceForm.state.isSubmitting ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             Submitting...
@@ -684,7 +684,7 @@ function KioskPage() {
               <CardDescription>
                 {manualStep === 1
                   ? 'Enter your personal information'
-                  : 'Select certificate types'}
+                  : 'Select services'}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -978,14 +978,14 @@ function KioskPage() {
 
                     {/* Next Button */}
                     <Button type="submit" form="guest-form" size="lg" className="w-full">
-                      Next: Select Certificates
+                      Next: Select Services
                     </Button>
                   </FieldGroup>
                 </form>
               ) : (
-                // STEP 2: Certificate Selection (same as lookup mode)
+                // STEP 2: Service Selection (same as lookup mode)
                 <form
-                  id="certificate-form"
+                  id="service-form"
                   onSubmit={(e) => {
                     e.preventDefault()
                     handleManualSubmit()
@@ -993,14 +993,14 @@ function KioskPage() {
                 >
                   <FieldGroup>
                     {activeDocumentTypes && (
-                      <certificateForm.Field
-                        name="certificates"
+                      <serviceForm.Field
+                        name="services"
                         mode="array"
                         children={(field) => {
                           const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
                           return (
                             <FieldSet>
-                              <FieldLegend variant="label">Select Certificate Types</FieldLegend>
+                              <FieldLegend variant="label">Select Services</FieldLegend>
                               {isInvalid && <FieldError errors={field.state.meta.errors} />}
                               <FieldGroup data-slot="checkbox-group" className="space-y-3">
                                 {activeDocumentTypes.map((docType) => {
@@ -1037,8 +1037,8 @@ function KioskPage() {
                                       </Field>
 
                                       {isChecked && certIndex !== -1 && (
-                                        <certificateForm.Field
-                                          name={`certificates[${certIndex}].purpose`}
+                                        <serviceForm.Field
+                                          name={`services[${certIndex}].purpose`}
                                           children={(purposeField) => {
                                             const isPurposeInvalid =
                                               purposeField.state.meta.isTouched &&
@@ -1058,7 +1058,7 @@ function KioskPage() {
                                                     value={purposeField.state.value}
                                                     onBlur={purposeField.handleBlur}
                                                     onChange={(e) => purposeField.handleChange(e.target.value)}
-                                                    placeholder="Enter purpose for this certificate..."
+                                                    placeholder="Enter purpose for this service..."
                                                     rows={2}
                                                     aria-invalid={isPurposeInvalid}
                                                   />
@@ -1082,7 +1082,7 @@ function KioskPage() {
                     )}
 
                     {/* Total Price */}
-                    {certificateForm.state.values.certificates.length > 0 && (
+                    {serviceForm.state.values.services.length > 0 && (
                       <div className="bg-blue-50 rounded-lg p-4 text-center">
                         <p className="text-sm text-gray-600">Total Amount</p>
                         <p className="text-3xl font-bold text-blue-600">
@@ -1104,12 +1104,12 @@ function KioskPage() {
                       </Button>
                       <Button
                         type="submit"
-                        form="certificate-form"
+                        form="service-form"
                         size="lg"
                         className="flex-1"
-                        disabled={certificateForm.state.values.certificates.length === 0}
+                        disabled={serviceForm.state.values.services.length === 0}
                       >
-                        {certificateForm.state.isSubmitting ? (
+                        {serviceForm.state.isSubmitting ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             Submitting...

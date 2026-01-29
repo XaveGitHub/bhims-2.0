@@ -16,8 +16,8 @@ export default function Header() {
   // ✅ COST OPTIMIZED: Fast path checks first (before any hooks/queries)
   const publicPaths = ['/', '/login', '/kiosk', '/queue-display']
   
-  // Hide header on public pages and admin pages (admin uses sidebar instead)
-  if (publicPaths.includes(currentPath) || currentPath.startsWith('/admin')) {
+  // Hide header on public pages, admin pages, and superadmin pages (they use sidebar instead)
+  if (publicPaths.includes(currentPath) || currentPath.startsWith('/admin') || currentPath.startsWith('/superadmin')) {
     return null
   }
 
@@ -58,9 +58,9 @@ export default function Header() {
           </Link>
 
           {/* Navigation - Only show for authenticated users */}
-          {/* Hide admin navigation on admin pages (sidebar handles it) */}
+          {/* Hide admin navigation on admin and superadmin pages (sidebar handles it) */}
           <SignedIn>
-            {!currentPath.startsWith('/admin') && (
+            {!currentPath.startsWith('/admin') && !currentPath.startsWith('/superadmin') && (
               <nav className="flex items-center space-x-1">
                 {/* Staff Navigation */}
                 {userRole === 'staff' && (

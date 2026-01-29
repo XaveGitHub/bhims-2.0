@@ -14,8 +14,13 @@ import { Route as PendingApprovalRouteImport } from './routes/pending-approval'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as KioskRouteImport } from './routes/kiosk'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SuperadminTransactionsRouteImport } from './routes/superadmin/transactions'
+import { Route as SuperadminStatisticsRouteImport } from './routes/superadmin/statistics'
+import { Route as SuperadminSettingsRouteImport } from './routes/superadmin/settings'
+import { Route as SuperadminDashboardRouteImport } from './routes/superadmin/dashboard'
 import { Route as StaffQueueRouteImport } from './routes/staff/queue'
 import { Route as AdminDashboardRouteImport } from './routes/admin/dashboard'
+import { Route as SuperadminResidentsIdRouteImport } from './routes/superadmin/residents.$id'
 import { Route as StaffProcessRequestIdRouteImport } from './routes/staff/process.$requestId'
 import { Route as AdminResidentsIdRouteImport } from './routes/admin/residents.$id'
 
@@ -44,6 +49,26 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SuperadminTransactionsRoute = SuperadminTransactionsRouteImport.update({
+  id: '/superadmin/transactions',
+  path: '/superadmin/transactions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SuperadminStatisticsRoute = SuperadminStatisticsRouteImport.update({
+  id: '/superadmin/statistics',
+  path: '/superadmin/statistics',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SuperadminSettingsRoute = SuperadminSettingsRouteImport.update({
+  id: '/superadmin/settings',
+  path: '/superadmin/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SuperadminDashboardRoute = SuperadminDashboardRouteImport.update({
+  id: '/superadmin/dashboard',
+  path: '/superadmin/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StaffQueueRoute = StaffQueueRouteImport.update({
   id: '/staff/queue',
   path: '/staff/queue',
@@ -52,6 +77,11 @@ const StaffQueueRoute = StaffQueueRouteImport.update({
 const AdminDashboardRoute = AdminDashboardRouteImport.update({
   id: '/admin/dashboard',
   path: '/admin/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SuperadminResidentsIdRoute = SuperadminResidentsIdRouteImport.update({
+  id: '/superadmin/residents/$id',
+  path: '/superadmin/residents/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StaffProcessRequestIdRoute = StaffProcessRequestIdRouteImport.update({
@@ -73,8 +103,13 @@ export interface FileRoutesByFullPath {
   '/queue-display': typeof QueueDisplayRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/staff/queue': typeof StaffQueueRoute
+  '/superadmin/dashboard': typeof SuperadminDashboardRoute
+  '/superadmin/settings': typeof SuperadminSettingsRoute
+  '/superadmin/statistics': typeof SuperadminStatisticsRoute
+  '/superadmin/transactions': typeof SuperadminTransactionsRoute
   '/admin/residents/$id': typeof AdminResidentsIdRoute
   '/staff/process/$requestId': typeof StaffProcessRequestIdRoute
+  '/superadmin/residents/$id': typeof SuperadminResidentsIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -84,8 +119,13 @@ export interface FileRoutesByTo {
   '/queue-display': typeof QueueDisplayRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/staff/queue': typeof StaffQueueRoute
+  '/superadmin/dashboard': typeof SuperadminDashboardRoute
+  '/superadmin/settings': typeof SuperadminSettingsRoute
+  '/superadmin/statistics': typeof SuperadminStatisticsRoute
+  '/superadmin/transactions': typeof SuperadminTransactionsRoute
   '/admin/residents/$id': typeof AdminResidentsIdRoute
   '/staff/process/$requestId': typeof StaffProcessRequestIdRoute
+  '/superadmin/residents/$id': typeof SuperadminResidentsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -96,8 +136,13 @@ export interface FileRoutesById {
   '/queue-display': typeof QueueDisplayRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/staff/queue': typeof StaffQueueRoute
+  '/superadmin/dashboard': typeof SuperadminDashboardRoute
+  '/superadmin/settings': typeof SuperadminSettingsRoute
+  '/superadmin/statistics': typeof SuperadminStatisticsRoute
+  '/superadmin/transactions': typeof SuperadminTransactionsRoute
   '/admin/residents/$id': typeof AdminResidentsIdRoute
   '/staff/process/$requestId': typeof StaffProcessRequestIdRoute
+  '/superadmin/residents/$id': typeof SuperadminResidentsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -109,8 +154,13 @@ export interface FileRouteTypes {
     | '/queue-display'
     | '/admin/dashboard'
     | '/staff/queue'
+    | '/superadmin/dashboard'
+    | '/superadmin/settings'
+    | '/superadmin/statistics'
+    | '/superadmin/transactions'
     | '/admin/residents/$id'
     | '/staff/process/$requestId'
+    | '/superadmin/residents/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -120,8 +170,13 @@ export interface FileRouteTypes {
     | '/queue-display'
     | '/admin/dashboard'
     | '/staff/queue'
+    | '/superadmin/dashboard'
+    | '/superadmin/settings'
+    | '/superadmin/statistics'
+    | '/superadmin/transactions'
     | '/admin/residents/$id'
     | '/staff/process/$requestId'
+    | '/superadmin/residents/$id'
   id:
     | '__root__'
     | '/'
@@ -131,8 +186,13 @@ export interface FileRouteTypes {
     | '/queue-display'
     | '/admin/dashboard'
     | '/staff/queue'
+    | '/superadmin/dashboard'
+    | '/superadmin/settings'
+    | '/superadmin/statistics'
+    | '/superadmin/transactions'
     | '/admin/residents/$id'
     | '/staff/process/$requestId'
+    | '/superadmin/residents/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -143,8 +203,13 @@ export interface RootRouteChildren {
   QueueDisplayRoute: typeof QueueDisplayRoute
   AdminDashboardRoute: typeof AdminDashboardRoute
   StaffQueueRoute: typeof StaffQueueRoute
+  SuperadminDashboardRoute: typeof SuperadminDashboardRoute
+  SuperadminSettingsRoute: typeof SuperadminSettingsRoute
+  SuperadminStatisticsRoute: typeof SuperadminStatisticsRoute
+  SuperadminTransactionsRoute: typeof SuperadminTransactionsRoute
   AdminResidentsIdRoute: typeof AdminResidentsIdRoute
   StaffProcessRequestIdRoute: typeof StaffProcessRequestIdRoute
+  SuperadminResidentsIdRoute: typeof SuperadminResidentsIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -184,6 +249,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/superadmin/transactions': {
+      id: '/superadmin/transactions'
+      path: '/superadmin/transactions'
+      fullPath: '/superadmin/transactions'
+      preLoaderRoute: typeof SuperadminTransactionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/superadmin/statistics': {
+      id: '/superadmin/statistics'
+      path: '/superadmin/statistics'
+      fullPath: '/superadmin/statistics'
+      preLoaderRoute: typeof SuperadminStatisticsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/superadmin/settings': {
+      id: '/superadmin/settings'
+      path: '/superadmin/settings'
+      fullPath: '/superadmin/settings'
+      preLoaderRoute: typeof SuperadminSettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/superadmin/dashboard': {
+      id: '/superadmin/dashboard'
+      path: '/superadmin/dashboard'
+      fullPath: '/superadmin/dashboard'
+      preLoaderRoute: typeof SuperadminDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/staff/queue': {
       id: '/staff/queue'
       path: '/staff/queue'
@@ -196,6 +289,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/dashboard'
       fullPath: '/admin/dashboard'
       preLoaderRoute: typeof AdminDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/superadmin/residents/$id': {
+      id: '/superadmin/residents/$id'
+      path: '/superadmin/residents/$id'
+      fullPath: '/superadmin/residents/$id'
+      preLoaderRoute: typeof SuperadminResidentsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/staff/process/$requestId': {
@@ -223,8 +323,13 @@ const rootRouteChildren: RootRouteChildren = {
   QueueDisplayRoute: QueueDisplayRoute,
   AdminDashboardRoute: AdminDashboardRoute,
   StaffQueueRoute: StaffQueueRoute,
+  SuperadminDashboardRoute: SuperadminDashboardRoute,
+  SuperadminSettingsRoute: SuperadminSettingsRoute,
+  SuperadminStatisticsRoute: SuperadminStatisticsRoute,
+  SuperadminTransactionsRoute: SuperadminTransactionsRoute,
   AdminResidentsIdRoute: AdminResidentsIdRoute,
   StaffProcessRequestIdRoute: StaffProcessRequestIdRoute,
+  SuperadminResidentsIdRoute: SuperadminResidentsIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -303,7 +303,7 @@ async function generateNextQueueNumber(ctx: any): Promise<string> {
 export const create = mutation({
   args: {
     documentRequestId: v.id("documentRequests"),
-    serviceType: v.optional(v.string()), // Default: 'certificate'
+    serviceType: v.optional(v.string()), // Default: 'service'
   },
   handler: async (ctx, args) => {
     // ✅ PUBLIC: Kiosk can create queue items (no auth required)
@@ -327,7 +327,7 @@ export const create = mutation({
     const queueId = await ctx.db.insert("queue", {
       documentRequestId: args.documentRequestId,
       queueNumber,
-      serviceType: args.serviceType || "certificate",
+      serviceType: args.serviceType || "service",
       status: "waiting",
       createdAt: now,
     })
@@ -442,7 +442,7 @@ export const processNext = mutation({
 
 /**
  * Mark queue item as done (ready for claim)
- * Called after staff prints certificates and marks request items as printed
+ * Called after staff prints services and marks request items as printed
  * Updates queue status to "done" and document request to "completed"
  */
 export const markDone = mutation({

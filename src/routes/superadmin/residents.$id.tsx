@@ -1,0 +1,514 @@
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useState, useEffect } from 'react'
+import { useQuery, useMutation } from 'convex/react'
+import { useAuth } from '@clerk/tanstack-react-start'
+import { api } from '../../../convex/_generated/api'
+import type { Doc, Id } from '../../../convex/_generated/dataModel'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { ArrowLeft, Edit, Save, X, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
+import { format } from 'date-fns'
+
+export const Route = createFileRoute('/superadmin/residents/$id')({
+  component: SuperadminResidentProfilePage,
+  pendingMs: 200,
+  pendingMinMs: 100,
+  pendingComponent: () => (
+    <div className="flex items-center justify-center h-64">
+      <Loader2 className="w-8 h-8 text-muted-foreground animate-spin" />
+    </div>
+  ),
+})
+
+function SuperadminResidentProfilePage() {
+  // RouteGuard and layout are now in parent route (/superadmin/_layout.tsx)
+  // This component only renders the page content
+  return <SuperadminResidentProfileContent />
+}
+
+function SuperadminResidentProfileContent() {
+  const { id } = Route.useParams()
+  const navigate = useNavigate()
+  const { isLoaded: authLoaded, isSignedIn } = useAuth()
+  const [isEditing, setIsEditing] = useState(false)
+  const [editedData, setEditedData] = useState<any>(null)
+  const [isSaving, setIsSaving] = useState(false)
+
+  // ✅ OPTIMIZED: Only skip query when auth is loaded AND user is not signed in
+  const shouldSkipQuery = authLoaded && !isSignedIn
+  
+  // Convert string ID to Convex ID
+  const residentId = id as Id<'residents'>
+  
+  const resident = useQuery(
+    api.residents.get,
+    shouldSkipQuery ? 'skip' : { id: residentId }
+  )
+  const transactions = useQuery(
+    api.documentRequests.listByResident,
+    shouldSkipQuery || !resident ? 'skip' : { residentId: resident._id, limit: 100 }
+  )
+  const updateResident = useMutation(api.residents.update)
+
+  // Initialize edited data when resident loads
+  useEffect(() => {
+    if (resident && !editedData && !isEditing) {
+      setEditedData({
+        firstName: resident.firstName,
+        middleName: resident.middleName,
+        lastName: resident.lastName,
+        suffix: (resident as any).suffix || '',
+        sex: resident.sex,
+        birthdate: format(new Date(resident.birthdate), 'yyyy-MM-dd'),
+        purok: resident.purok,
+        seniorOrPwd: (resident as any).seniorOrPwd || 'none',
+        status: resident.status,
+      })
+    }
+  }, [resident, editedData, isEditing])
+
+  const handleSave = async () => {
+    if (!resident || !editedData || isSaving) return
+    setIsSaving(true)
+    try {
+      const birthdateTimestamp = new Date(editedData.birthdate).getTime()
+      await updateResident({
+        id: resident._id,
+        firstName: editedData.firstName,
+        middleName: editedData.middleName,
+        lastName: editedData.lastName,
+        suffix: editedData.suffix || undefined,
+        sex: editedData.sex,
+        birthdate: birthdateTimestamp,
+        purok: editedData.purok,
+        seniorOrPwd: editedData.seniorOrPwd,
+        status: editedData.status,
+      })
+      toast.success('Resident updated successfully')
+      setIsEditing(false)
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update resident')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleCancel = () => {
+    if (resident) {
+      setEditedData({
+        firstName: resident.firstName,
+        middleName: resident.middleName,
+        lastName: resident.lastName,
+        suffix: (resident as any).suffix || '',
+        sex: resident.sex,
+        birthdate: format(new Date(resident.birthdate), 'yyyy-MM-dd'),
+        purok: resident.purok,
+        seniorOrPwd: (resident as any).seniorOrPwd || 'none',
+        status: resident.status,
+      })
+    }
+    setIsEditing(false)
+  }
+
+  const calculateAge = (birthdate: number): number => {
+    const today = new Date()
+    const birth = new Date(birthdate)
+    let age = today.getFullYear() - birth.getFullYear()
+    const monthDiff = today.getMonth() - birth.getMonth()
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--
+    }
+    return age
+  }
+
+  const getStatusBadgeVariant = (status: string) => {
+    switch (status) {
+      case 'resident':
+        return 'default'
+      case 'pending':
+        return 'secondary'
+      case 'deceased':
+        return 'destructive'
+      case 'moved':
+        return 'outline'
+      default:
+        return 'outline'
+    }
+  }
+
+  // Only show loading spinner on true initial load (when auth is not loaded AND no cached data)
+  // This prevents showing loading spinner on every navigation
+  const isInitialLoad = !authLoaded && resident === undefined
+  
+  if (isInitialLoad) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (!resident) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Card className="max-w-md">
+          <CardContent className="pt-6">
+            <p className="text-center text-muted-foreground">Resident not found</p>
+            <Button
+              variant="outline"
+              className="w-full mt-4"
+              onClick={() => navigate({ to: '/superadmin/dashboard' })}
+            >
+              Back to Dashboard
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      {/* Header */}
+      <div className="mb-6 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate({ to: '/superadmin/dashboard' })}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Resident Profile</h1>
+            <p className="text-gray-600 mt-1">Resident ID: {resident.residentId}</p>
+          </div>
+        </div>
+        {!isEditing ? (
+          <Button onClick={() => setIsEditing(true)}>
+            <Edit className="h-4 w-4 mr-2" />
+            Edit
+          </Button>
+        ) : (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleCancel} disabled={isSaving}>
+              <X className="h-4 w-4 mr-2" />
+              Cancel
+            </Button>
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Changes
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Resident Information */}
+        <div className="lg:col-span-2 space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Resident Information</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* First Name */}
+                <div>
+                  <Label htmlFor="firstName">First Name</Label>
+                  {isEditing ? (
+                    <Input
+                      id="firstName"
+                      value={editedData?.firstName || ''}
+                      onChange={(e) =>
+                        setEditedData({ ...editedData, firstName: e.target.value })
+                      }
+                      className="mt-1"
+                    />
+                  ) : (
+                    <p className="mt-1 text-sm font-medium">{resident.firstName}</p>
+                  )}
+                </div>
+
+                {/* Middle Name */}
+                <div>
+                  <Label htmlFor="middleName">Middle Name</Label>
+                  {isEditing ? (
+                    <Input
+                      id="middleName"
+                      value={editedData?.middleName || ''}
+                      onChange={(e) =>
+                        setEditedData({ ...editedData, middleName: e.target.value })
+                      }
+                      className="mt-1"
+                    />
+                  ) : (
+                    <p className="mt-1 text-sm font-medium">{resident.middleName || '-'}</p>
+                  )}
+                </div>
+
+                {/* Last Name */}
+                <div>
+                  <Label htmlFor="lastName">Last Name</Label>
+                  {isEditing ? (
+                    <Input
+                      id="lastName"
+                      value={editedData?.lastName || ''}
+                      onChange={(e) =>
+                        setEditedData({ ...editedData, lastName: e.target.value })
+                      }
+                      className="mt-1"
+                    />
+                  ) : (
+                    <p className="mt-1 text-sm font-medium">
+                      {resident.lastName}
+                      {(resident as any).suffix && ` ${(resident as any).suffix}`}
+                    </p>
+                  )}
+                </div>
+
+                {/* Suffix */}
+                <div>
+                  <Label htmlFor="suffix">Suffix (Optional)</Label>
+                  {isEditing ? (
+                    <Input
+                      id="suffix"
+                      placeholder="e.g., Jr., Sr., III"
+                      value={editedData?.suffix || ''}
+                      onChange={(e) =>
+                        setEditedData({ ...editedData, suffix: e.target.value })
+                      }
+                      className="mt-1"
+                    />
+                  ) : (
+                    <p className="mt-1 text-sm font-medium">
+                      {(resident as any).suffix || '-'}
+                    </p>
+                  )}
+                </div>
+
+                {/* Birthdate */}
+                <div>
+                  <Label htmlFor="birthdate">Birthdate</Label>
+                  {isEditing ? (
+                    <Input
+                      id="birthdate"
+                      type="date"
+                      value={editedData?.birthdate || ''}
+                      onChange={(e) =>
+                        setEditedData({ ...editedData, birthdate: e.target.value })
+                      }
+                      className="mt-1"
+                      max={new Date().toISOString().split('T')[0]}
+                    />
+                  ) : (
+                    <div className="mt-1">
+                      <p className="text-sm font-medium">
+                        {format(new Date(resident.birthdate), 'MMMM dd, yyyy')}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Age: {calculateAge(resident.birthdate)} years old
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Gender */}
+                <div>
+                  <Label htmlFor="sex">Gender</Label>
+                  {isEditing ? (
+                    <select
+                      id="sex"
+                      value={editedData?.sex || 'male'}
+                      onChange={(e) =>
+                        setEditedData({ ...editedData, sex: e.target.value })
+                      }
+                      className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
+                    </select>
+                  ) : (
+                    <p className="mt-1 text-sm font-medium capitalize">{resident.sex}</p>
+                  )}
+                </div>
+
+                {/* Status */}
+                <div>
+                  <Label htmlFor="status">Status</Label>
+                  {isEditing ? (
+                    <select
+                      id="status"
+                      value={editedData?.status || 'resident'}
+                      onChange={(e) =>
+                        setEditedData({ ...editedData, status: e.target.value })
+                      }
+                      className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="resident">Resident</option>
+                      <option value="pending">Pending</option>
+                      <option value="deceased">Deceased</option>
+                      <option value="moved">Moved</option>
+                    </select>
+                  ) : (
+                    <div className="mt-1">
+                      <Badge variant={getStatusBadgeVariant(resident.status)}>
+                        {resident.status}
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+
+                {/* Purok */}
+                <div>
+                  <Label htmlFor="purok">Purok</Label>
+                  {isEditing ? (
+                    <Input
+                      id="purok"
+                      value={editedData?.purok || ''}
+                      onChange={(e) =>
+                        setEditedData({ ...editedData, purok: e.target.value })
+                      }
+                      className="mt-1"
+                    />
+                  ) : (
+                    <p className="mt-1 text-sm font-medium">{resident.purok}</p>
+                  )}
+                </div>
+
+                {/* Senior or PWD */}
+                <div>
+                  <Label htmlFor="seniorOrPwd">Senior or PWD</Label>
+                  {isEditing ? (
+                    <select
+                      id="seniorOrPwd"
+                      value={editedData?.seniorOrPwd || 'none'}
+                      onChange={(e) =>
+                        setEditedData({ ...editedData, seniorOrPwd: e.target.value })
+                      }
+                      className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="none">None</option>
+                      <option value="senior">Senior</option>
+                      <option value="pwd">PWD</option>
+                      <option value="both">Both (Senior & PWD)</option>
+                    </select>
+                  ) : (
+                    <p className="mt-1 text-sm font-medium capitalize">
+                      {(resident as any).seniorOrPwd === 'none' 
+                        ? 'None' 
+                        : (resident as any).seniorOrPwd === 'both'
+                        ? 'Both (Senior & PWD)'
+                        : (resident as any).seniorOrPwd || 'None'}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Transaction History */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Transaction History</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {transactions === undefined ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : transactions.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">
+                  No transactions found for this resident
+                </p>
+              ) : (
+                <div className="border rounded-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Request Number</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Total Price</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {transactions.map((transaction: Doc<'documentRequests'>) => (
+                        <TableRow key={transaction._id}>
+                          <TableCell className="font-mono text-sm">
+                            {transaction.requestNumber}
+                          </TableCell>
+                          <TableCell>
+                            {format(new Date(transaction.requestedAt), 'MMM dd, yyyy h:mm a')}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={getStatusBadgeVariant(transaction.status)}>
+                              {transaction.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            ₱{(transaction.totalPrice / 100).toLocaleString('en-US', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Quick Info Sidebar */}
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Quick Info</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label className="text-xs text-muted-foreground">Resident ID</Label>
+                <p className="font-mono text-sm font-medium">{resident.residentId}</p>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Created</Label>
+                <p className="text-sm">
+                  {format(new Date(resident.createdAt), 'MMM dd, yyyy')}
+                </p>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Last Updated</Label>
+                <p className="text-sm">
+                  {format(new Date(resident.updatedAt), 'MMM dd, yyyy')}
+                </p>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Total Transactions</Label>
+                <p className="text-sm font-medium">
+                  {transactions === undefined ? '-' : transactions.length}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </>
+  )
+}

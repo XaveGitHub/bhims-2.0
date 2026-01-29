@@ -41,8 +41,10 @@ function HomePage() {
       navigate({ to: '/pending-approval' })
     } else if (userRole === 'staff') {
       navigate({ to: '/staff/queue' })
-    } else if (userRole === 'admin' || userRole === 'superadmin') {
+    } else if (userRole === 'admin') {
       navigate({ to: '/admin/dashboard' })
+    } else if (userRole === 'superadmin') {
+      navigate({ to: '/superadmin/dashboard' })
     }
   }, [authLoaded, isSignedIn, userRole, navigate])
 

@@ -23,7 +23,7 @@ export const Route = createFileRoute('/admin/residents/$id')({
 
 function ResidentProfilePage() {
   return (
-    <RouteGuard allowedRoles={['admin', 'superadmin']}>
+    <RouteGuard allowedRoles={['admin']}>
       <ResidentProfileContent />
     </RouteGuard>
   )

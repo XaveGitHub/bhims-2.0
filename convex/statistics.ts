@@ -131,7 +131,7 @@ async function getQueueVolumeToday(ctx: any): Promise<number> {
 
 /**
  * Helper: Get sales statistics (Superadmin only)
- * Calculates total revenue from printed certificates
+ * Calculates total revenue from printed services
  */
 async function getSalesStatistics(ctx: any): Promise<{
   totalRevenue: number // In cents
@@ -182,12 +182,13 @@ async function getSalesStatistics(ctx: any): Promise<{
 
 /**
  * Get detailed statistics with filtering
- * Used for /admin/statistics page
+ * Used for /superadmin/statistics page
  * Supports filtering by zone, gender, date range
+ * Includes documents issued stats and sales stats (superadmin only)
  */
 export const getDetailedStats = query({
   args: {
-    zone: v.optional(v.string()),
+    purok: v.optional(v.string()), // Changed from zone to purok to match schema
     gender: v.optional(v.union(v.literal("male"), v.literal("female"), v.literal("other"))),
     startDate: v.optional(v.number()), // Timestamp
     endDate: v.optional(v.number()), // Timestamp
@@ -202,12 +203,12 @@ export const getDetailedStats = query({
 
     // Build resident query based on filters
     let residents
-    if (args.zone) {
-      // Use composite index for zone + status
+    if (args.purok) {
+      // Use composite index for purok + status (index name is by_status_zone but field is purok)
       residents = await ctx.db
         .query("residents")
         .withIndex("by_status_zone", (q: any) =>
-          q.eq("status", "resident").eq("zone", args.zone!)
+          q.eq("status", "resident").eq("purok", args.purok!)
         )
         .collect()
     } else {
@@ -229,20 +230,225 @@ export const getDetailedStats = query({
     const femaleCount = filteredResidents.filter((r) => r.sex === "female").length
     const otherCount = filteredResidents.filter((r) => r.sex === "other").length
 
-    return {
+    // Get documents issued statistics
+    const documentsStats = await getDocumentsIssuedStats(ctx, args.startDate, args.endDate)
+
+    const result = {
       residents: {
         total: filteredResidents.length,
         male: maleCount,
         female: femaleCount,
         other: otherCount,
       },
-      zone: args.zone || null,
+      documents: documentsStats,
+      purok: args.purok || null,
       gender: args.gender || null,
       dateRange: {
         start: args.startDate || null,
         end: args.endDate || null,
       },
     }
+
+    // Add sales statistics only for Superadmin
+    if (user.role === "superadmin") {
+      const salesStats = await getSalesStatisticsWithFilters(ctx, args.startDate, args.endDate)
+      return {
+        ...result,
+        sales: salesStats,
+      }
+    }
+
+    return result
   },
 })
+
+/**
+ * Helper: Get documents issued statistics
+ * Returns total documents issued, by month, and by document type
+ */
+async function getDocumentsIssuedStats(
+  ctx: any,
+  startDate?: number,
+  endDate?: number
+): Promise<{
+  total: number
+  byMonth: Array<{ month: string; count: number }>
+  byType: Array<{ documentTypeId: string; documentTypeName: string; count: number }>
+}> {
+  // Get all printed items
+  let printedItems = await ctx.db
+    .query("documentRequestItems")
+    .withIndex("by_status", (q: any) => q.eq("status", "printed"))
+    .collect()
+
+  // Apply date filter if provided
+  if (startDate || endDate) {
+    printedItems = printedItems.filter((item: any) => {
+      if (!item.printedAt) return false
+      if (startDate && item.printedAt < startDate) return false
+      if (endDate && item.printedAt > endDate) return false
+      return true
+    })
+  }
+
+  // Get all document types for mapping
+  const documentTypeIds = [...new Set(printedItems.map((item: any) => item.documentTypeId))]
+  const documentTypes = await Promise.all(
+    documentTypeIds.map((id) => ctx.db.get(id))
+  )
+  const documentTypeMap = new Map(
+    documentTypes.filter(Boolean).map((dt: any) => [dt._id, dt])
+  )
+
+  // Count by month
+  const byMonthMap = new Map<string, number>()
+  for (const item of printedItems) {
+    if (item.printedAt) {
+      const date = new Date(item.printedAt)
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+      byMonthMap.set(monthKey, (byMonthMap.get(monthKey) || 0) + 1)
+    }
+  }
+
+  // Convert to array and sort by month
+  const byMonth = Array.from(byMonthMap.entries())
+    .map(([month, count]) => ({ month, count }))
+    .sort((a, b) => a.month.localeCompare(b.month))
+
+  // Count by document type
+  const byTypeMap = new Map<string, { name: string; count: number }>()
+  for (const item of printedItems) {
+    const docType = documentTypeMap.get(item.documentTypeId)
+    if (docType) {
+      const existing = byTypeMap.get(item.documentTypeId) || { name: docType.name, count: 0 }
+      byTypeMap.set(item.documentTypeId, {
+        name: existing.name,
+        count: existing.count + 1,
+      })
+    }
+  }
+
+  // Convert to array and sort by count (descending)
+  const byType = Array.from(byTypeMap.entries())
+    .map(([documentTypeId, data]) => ({
+      documentTypeId,
+      documentTypeName: data.name,
+      count: data.count,
+    }))
+    .sort((a, b) => b.count - a.count)
+
+  return {
+    total: printedItems.length,
+    byMonth,
+    byType,
+  }
+}
+
+/**
+ * Helper: Get sales statistics with date filtering (Superadmin only)
+ * Calculates total revenue from printed services within date range
+ */
+async function getSalesStatisticsWithFilters(
+  ctx: any,
+  startDate?: number,
+  endDate?: number
+): Promise<{
+  totalRevenue: number // In cents
+  revenueThisMonth: number // In cents
+  revenueByMonth: Array<{ month: string; revenue: number }>
+  revenueByType: Array<{ documentTypeId: string; documentTypeName: string; revenue: number }>
+}> {
+  // Get all printed items
+  let printedItems = await ctx.db
+    .query("documentRequestItems")
+    .withIndex("by_status", (q: any) => q.eq("status", "printed"))
+    .collect()
+
+  // Apply date filter if provided
+  if (startDate || endDate) {
+    printedItems = printedItems.filter((item: any) => {
+      if (!item.printedAt) return false
+      if (startDate && item.printedAt < startDate) return false
+      if (endDate && item.printedAt > endDate) return false
+      return true
+    })
+  }
+
+  // Get document types for pricing
+  const documentTypeIds = [...new Set(printedItems.map((item: any) => item.documentTypeId))]
+  const documentTypes = await Promise.all(
+    documentTypeIds.map((id) => ctx.db.get(id))
+  )
+  const documentTypeMap = new Map(
+    documentTypes.filter(Boolean).map((dt: any) => [dt._id, dt])
+  )
+
+  // Calculate total revenue
+  let totalRevenue = 0
+  let revenueThisMonth = 0
+
+  const now = Date.now()
+  const startOfMonth = new Date(now)
+  startOfMonth.setDate(1)
+  startOfMonth.setHours(0, 0, 0, 0)
+  const startOfMonthTimestamp = startOfMonth.getTime()
+
+  // Revenue by month
+  const revenueByMonthMap = new Map<string, number>()
+
+  // Revenue by document type
+  const revenueByTypeMap = new Map<string, { name: string; revenue: number }>()
+
+  for (const item of printedItems) {
+    const documentType = documentTypeMap.get(item.documentTypeId)
+    if (documentType) {
+      totalRevenue += documentType.price
+
+      // Check if printed this month
+      if (item.printedAt && item.printedAt >= startOfMonthTimestamp) {
+        revenueThisMonth += documentType.price
+      }
+
+      // Group by month
+      if (item.printedAt) {
+        const date = new Date(item.printedAt)
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+        revenueByMonthMap.set(
+          monthKey,
+          (revenueByMonthMap.get(monthKey) || 0) + documentType.price
+        )
+      }
+
+      // Group by document type
+      const existing = revenueByTypeMap.get(item.documentTypeId) || {
+        name: documentType.name,
+        revenue: 0,
+      }
+      revenueByTypeMap.set(item.documentTypeId, {
+        name: existing.name,
+        revenue: existing.revenue + documentType.price,
+      })
+    }
+  }
+
+  // Convert to arrays and sort
+  const revenueByMonth = Array.from(revenueByMonthMap.entries())
+    .map(([month, revenue]) => ({ month, revenue }))
+    .sort((a, b) => a.month.localeCompare(b.month))
+
+  const revenueByType = Array.from(revenueByTypeMap.entries())
+    .map(([documentTypeId, data]) => ({
+      documentTypeId,
+      documentTypeName: data.name,
+      revenue: data.revenue,
+    }))
+    .sort((a, b) => b.revenue - a.revenue)
+
+  return {
+    totalRevenue,
+    revenueThisMonth,
+    revenueByMonth,
+    revenueByType,
+  }
+}
 

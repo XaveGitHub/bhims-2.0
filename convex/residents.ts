@@ -183,6 +183,25 @@ export const listByStatus = query({
 })
 
 /**
+ * Get unique puroks from residents
+ * Used for filter dropdowns
+ */
+export const getUniquePuroks = query({
+  args: {},
+  handler: async (ctx) => {
+    // Get all residents with status 'resident'
+    const residents = await ctx.db
+      .query("residents")
+      .withIndex("by_status", (q) => q.eq("status", "resident"))
+      .collect()
+    
+    // Extract unique puroks
+    const puroks = [...new Set(residents.map((r) => r.purok))].sort()
+    return puroks
+  },
+})
+
+/**
  * Get residents by purok
  * Uses status index, then filters by purok client-side
  */
@@ -387,6 +406,172 @@ export const update = mutation({
 
     await ctx.db.patch(id, cleanUpdates)
     return id
+  },
+})
+
+/**
+ * Check for duplicate residents based on name and birthdate
+ * Used for pending resident approval workflow
+ * Returns potential duplicates with match confidence
+ */
+export const checkDuplicates = query({
+  args: {
+    firstName: v.string(),
+    lastName: v.string(),
+    birthdate: v.number(), // Timestamp
+    excludeId: v.optional(v.id("residents")), // Exclude this resident from results (for pending residents)
+  },
+  handler: async (ctx, args) => {
+    const birthdateDate = new Date(args.birthdate)
+    const birthdateStart = new Date(birthdateDate)
+    birthdateStart.setHours(0, 0, 0, 0)
+    const birthdateEnd = new Date(birthdateDate)
+    birthdateEnd.setHours(23, 59, 59, 999)
+
+    // Normalize names for comparison
+    const normalizedFirstName = args.firstName.toLowerCase().trim()
+    const normalizedLastName = args.lastName.toLowerCase().trim()
+
+    // Search by last name using index (most efficient)
+    const candidates = await ctx.db
+      .query("residents")
+      .withIndex("by_name", (q) =>
+        q.gte("lastName", normalizedLastName).lt("lastName", normalizedLastName + "\uffff")
+      )
+      .take(100) // Limit for efficiency
+
+    const duplicates: Array<{
+      resident: any
+      confidence: "high" | "medium" | "low"
+      reason: string
+    }> = []
+
+    for (const candidate of candidates) {
+      // Skip if it's the same resident (excludeId)
+      if (args.excludeId && candidate._id === args.excludeId) continue
+
+      const candidateFirstName = candidate.firstName.toLowerCase().trim()
+      const candidateLastName = candidate.lastName.toLowerCase().trim()
+      const candidateBirthdate = new Date(candidate.birthdate)
+
+      // Check exact match: same name + same birthdate (same day)
+      if (
+        candidateFirstName === normalizedFirstName &&
+        candidateLastName === normalizedLastName &&
+        candidateBirthdate >= birthdateStart &&
+        candidateBirthdate <= birthdateEnd
+      ) {
+        duplicates.push({
+          resident: candidate,
+          confidence: "high",
+          reason: "Exact match: Same name and birthdate",
+        })
+        continue
+      }
+
+      // Check similar: same name + birthdate within 1 day
+      const dayDiff = Math.abs(
+        Math.floor((candidateBirthdate.getTime() - birthdateDate.getTime()) / (1000 * 60 * 60 * 24))
+      )
+      if (
+        candidateFirstName === normalizedFirstName &&
+        candidateLastName === normalizedLastName &&
+        dayDiff <= 1
+      ) {
+        duplicates.push({
+          resident: candidate,
+          confidence: "medium",
+          reason: `Similar match: Same name, birthdate differs by ${dayDiff} day(s)`,
+        })
+      }
+    }
+
+    return duplicates.sort((a, b) => {
+      // Sort by confidence: high > medium > low
+      const confidenceOrder = { high: 3, medium: 2, low: 1 }
+      return confidenceOrder[b.confidence] - confidenceOrder[a.confidence]
+    })
+  },
+})
+
+/**
+ * Approve pending resident (convert guest to full resident)
+ * Assigns proper Resident ID and changes status to "resident"
+ */
+export const approvePending = mutation({
+  args: {
+    id: v.id("residents"),
+    residentId: v.optional(v.string()), // Optional - will auto-generate if not provided
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx)
+    if (!user) throw new Error("Unauthorized")
+
+    // Only admin/superadmin can approve
+    if (user.role !== "admin" && user.role !== "superadmin") {
+      throw new Error("Unauthorized: Only admin can approve pending residents")
+    }
+
+    const resident = await ctx.db.get(args.id)
+    if (!resident) {
+      throw new Error("Resident not found")
+    }
+
+    if (resident.status !== "pending") {
+      throw new Error("Resident is not pending approval")
+    }
+
+    // Generate or use provided Resident ID
+    const newResidentId = args.residentId || (await generateNextResidentId(ctx))
+
+    // Check if Resident ID already exists
+    const existing = await ctx.db
+      .query("residents")
+      .withIndex("by_residentId", (q) => q.eq("residentId", newResidentId))
+      .first()
+
+    if (existing && existing._id !== args.id) {
+      throw new Error(`Resident ID ${newResidentId} already exists`)
+    }
+
+    // Update resident: assign proper ID and change status
+    await ctx.db.patch(args.id, {
+      residentId: newResidentId,
+      status: "resident",
+      updatedAt: Date.now(),
+    })
+
+    return { id: args.id, residentId: newResidentId }
+  },
+})
+
+/**
+ * Reject pending resident (delete pending record)
+ * Used when admin determines it's a duplicate or invalid
+ */
+export const rejectPending = mutation({
+  args: { id: v.id("residents") },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx)
+    if (!user) throw new Error("Unauthorized")
+
+    // Only admin/superadmin can reject
+    if (user.role !== "admin" && user.role !== "superadmin") {
+      throw new Error("Unauthorized: Only admin can reject pending residents")
+    }
+
+    const resident = await ctx.db.get(args.id)
+    if (!resident) {
+      throw new Error("Resident not found")
+    }
+
+    if (resident.status !== "pending") {
+      throw new Error("Resident is not pending approval")
+    }
+
+    // Delete the pending resident record
+    await ctx.db.delete(args.id)
+    return args.id
   },
 })
 
