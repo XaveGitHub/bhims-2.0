@@ -59,6 +59,9 @@ function SuperadminResidentProfileContent() {
   useEffect(() => {
     if (resident && !editedData && !isEditing) {
       setEditedData({
+        block: (resident as any).block || '',
+        lot: (resident as any).lot || '',
+        phase: (resident as any).phase || '',
         firstName: resident.firstName,
         middleName: resident.middleName,
         lastName: resident.lastName,
@@ -66,7 +69,35 @@ function SuperadminResidentProfileContent() {
         sex: resident.sex,
         birthdate: format(new Date(resident.birthdate), 'yyyy-MM-dd'),
         purok: resident.purok,
-        seniorOrPwd: (resident as any).seniorOrPwd || 'none',
+        civilStatus: (resident as any).civilStatus || 'Single',
+        educationalAttainment: (resident as any).educationalAttainment || 'No Grade',
+        occupation: (resident as any).occupation || '',
+        employmentStatus: (resident as any).employmentStatus || 'Unemployed',
+        isResidentVoter: (resident as any).isResidentVoter ?? false,
+        isRegisteredVoter: (resident as any).isRegisteredVoter ?? false,
+        isOFW: (resident as any).isOFW ?? false,
+        isPWD: (resident as any).isPWD ?? false,
+        isOSY: (resident as any).isOSY ?? false,
+        isSeniorCitizen: (resident as any).isSeniorCitizen ?? false,
+        isSoloParent: (resident as any).isSoloParent ?? false,
+        isIP: (resident as any).isIP ?? false,
+        isMigrant: (resident as any).isMigrant ?? false,
+        contactNumber: (resident as any).contactNumber || '',
+        email: (resident as any).email || '',
+        estimatedMonthlyIncome: (resident as any).estimatedMonthlyIncome || undefined,
+        primarySourceOfLivelihood: (resident as any).primarySourceOfLivelihood || '',
+        tenureStatus: (resident as any).tenureStatus || '',
+        housingType: (resident as any).housingType || 'Owned',
+        constructionType: (resident as any).constructionType || 'Light',
+        sanitationMethod: (resident as any).sanitationMethod || '',
+        religion: (resident as any).religion || '',
+        debilitatingDiseases: (resident as any).debilitatingDiseases || '',
+        isBedBound: (resident as any).isBedBound ?? undefined,
+        isWheelchairBound: (resident as any).isWheelchairBound ?? false,
+        isDialysisPatient: (resident as any).isDialysisPatient ?? false,
+        isCancerPatient: (resident as any).isCancerPatient ?? false,
+        isNationalPensioner: (resident as any).isNationalPensioner ?? false,
+        isLocalPensioner: (resident as any).isLocalPensioner ?? false,
         status: resident.status,
       })
     }
@@ -79,6 +110,9 @@ function SuperadminResidentProfileContent() {
       const birthdateTimestamp = new Date(editedData.birthdate).getTime()
       await updateResident({
         id: resident._id,
+        block: editedData.block,
+        lot: editedData.lot,
+        phase: editedData.phase,
         firstName: editedData.firstName,
         middleName: editedData.middleName,
         lastName: editedData.lastName,
@@ -86,7 +120,35 @@ function SuperadminResidentProfileContent() {
         sex: editedData.sex,
         birthdate: birthdateTimestamp,
         purok: editedData.purok,
-        seniorOrPwd: editedData.seniorOrPwd,
+        civilStatus: editedData.civilStatus,
+        educationalAttainment: editedData.educationalAttainment,
+        occupation: editedData.occupation || undefined,
+        employmentStatus: editedData.employmentStatus,
+        isResidentVoter: editedData.isResidentVoter,
+        isRegisteredVoter: editedData.isRegisteredVoter,
+        isOFW: editedData.isOFW,
+        isPWD: editedData.isPWD,
+        isOSY: editedData.isOSY,
+        isSeniorCitizen: editedData.isSeniorCitizen,
+        isSoloParent: editedData.isSoloParent,
+        isIP: editedData.isIP,
+        isMigrant: editedData.isMigrant,
+        contactNumber: editedData.contactNumber || undefined,
+        email: editedData.email || undefined,
+        estimatedMonthlyIncome: editedData.estimatedMonthlyIncome || undefined,
+        primarySourceOfLivelihood: editedData.primarySourceOfLivelihood || undefined,
+        tenureStatus: editedData.tenureStatus || undefined,
+        housingType: editedData.housingType,
+        constructionType: editedData.constructionType,
+        sanitationMethod: editedData.sanitationMethod || undefined,
+        religion: editedData.religion || undefined,
+        debilitatingDiseases: editedData.debilitatingDiseases || undefined,
+        isBedBound: editedData.isBedBound,
+        isWheelchairBound: editedData.isWheelchairBound,
+        isDialysisPatient: editedData.isDialysisPatient,
+        isCancerPatient: editedData.isCancerPatient,
+        isNationalPensioner: editedData.isNationalPensioner,
+        isLocalPensioner: editedData.isLocalPensioner,
         status: editedData.status,
       })
       toast.success('Resident updated successfully')
@@ -101,6 +163,9 @@ function SuperadminResidentProfileContent() {
   const handleCancel = () => {
     if (resident) {
       setEditedData({
+        block: (resident as any).block || '',
+        lot: (resident as any).lot || '',
+        phase: (resident as any).phase || '',
         firstName: resident.firstName,
         middleName: resident.middleName,
         lastName: resident.lastName,
@@ -108,7 +173,35 @@ function SuperadminResidentProfileContent() {
         sex: resident.sex,
         birthdate: format(new Date(resident.birthdate), 'yyyy-MM-dd'),
         purok: resident.purok,
-        seniorOrPwd: (resident as any).seniorOrPwd || 'none',
+        civilStatus: (resident as any).civilStatus || 'Single',
+        educationalAttainment: (resident as any).educationalAttainment || 'No Grade',
+        occupation: (resident as any).occupation || '',
+        employmentStatus: (resident as any).employmentStatus || 'Unemployed',
+        isResidentVoter: (resident as any).isResidentVoter ?? false,
+        isRegisteredVoter: (resident as any).isRegisteredVoter ?? false,
+        isOFW: (resident as any).isOFW ?? false,
+        isPWD: (resident as any).isPWD ?? false,
+        isOSY: (resident as any).isOSY ?? false,
+        isSeniorCitizen: (resident as any).isSeniorCitizen ?? false,
+        isSoloParent: (resident as any).isSoloParent ?? false,
+        isIP: (resident as any).isIP ?? false,
+        isMigrant: (resident as any).isMigrant ?? false,
+        contactNumber: (resident as any).contactNumber || '',
+        email: (resident as any).email || '',
+        estimatedMonthlyIncome: (resident as any).estimatedMonthlyIncome || undefined,
+        primarySourceOfLivelihood: (resident as any).primarySourceOfLivelihood || '',
+        tenureStatus: (resident as any).tenureStatus || '',
+        housingType: (resident as any).housingType || 'Owned',
+        constructionType: (resident as any).constructionType || 'Light',
+        sanitationMethod: (resident as any).sanitationMethod || '',
+        religion: (resident as any).religion || '',
+        debilitatingDiseases: (resident as any).debilitatingDiseases || '',
+        isBedBound: (resident as any).isBedBound ?? undefined,
+        isWheelchairBound: (resident as any).isWheelchairBound ?? false,
+        isDialysisPatient: (resident as any).isDialysisPatient ?? false,
+        isCancerPatient: (resident as any).isCancerPatient ?? false,
+        isNationalPensioner: (resident as any).isNationalPensioner ?? false,
+        isLocalPensioner: (resident as any).isLocalPensioner ?? false,
         status: resident.status,
       })
     }
@@ -390,30 +483,46 @@ function SuperadminResidentProfileContent() {
                   )}
                 </div>
 
-                {/* Senior or PWD */}
+                {/* Senior Citizen */}
                 <div>
-                  <Label htmlFor="seniorOrPwd">Senior or PWD</Label>
+                  <Label htmlFor="isSeniorCitizen">Senior Citizen</Label>
                   {isEditing ? (
                     <select
-                      id="seniorOrPwd"
-                      value={editedData?.seniorOrPwd || 'none'}
+                      id="isSeniorCitizen"
+                      value={editedData?.isSeniorCitizen ? 'yes' : 'no'}
                       onChange={(e) =>
-                        setEditedData({ ...editedData, seniorOrPwd: e.target.value })
+                        setEditedData({ ...editedData, isSeniorCitizen: e.target.value === 'yes' })
                       }
                       className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <option value="none">None</option>
-                      <option value="senior">Senior</option>
-                      <option value="pwd">PWD</option>
-                      <option value="both">Both (Senior & PWD)</option>
+                      <option value="no">No</option>
+                      <option value="yes">Yes</option>
                     </select>
                   ) : (
-                    <p className="mt-1 text-sm font-medium capitalize">
-                      {(resident as any).seniorOrPwd === 'none' 
-                        ? 'None' 
-                        : (resident as any).seniorOrPwd === 'both'
-                        ? 'Both (Senior & PWD)'
-                        : (resident as any).seniorOrPwd || 'None'}
+                    <p className="mt-1 text-sm font-medium">
+                      {(resident as any).isSeniorCitizen ? 'Yes' : 'No'}
+                    </p>
+                  )}
+                </div>
+
+                {/* PWD */}
+                <div>
+                  <Label htmlFor="isPWD">PWD</Label>
+                  {isEditing ? (
+                    <select
+                      id="isPWD"
+                      value={editedData?.isPWD ? 'yes' : 'no'}
+                      onChange={(e) =>
+                        setEditedData({ ...editedData, isPWD: e.target.value === 'yes' })
+                      }
+                      className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="no">No</option>
+                      <option value="yes">Yes</option>
+                    </select>
+                  ) : (
+                    <p className="mt-1 text-sm font-medium">
+                      {(resident as any).isPWD ? 'Yes' : 'No'}
                     </p>
                   )}
                 </div>

@@ -51,6 +51,9 @@ import {
   FieldLabel,
 } from '@/components/ui/field'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
+import { Separator } from '@/components/ui/separator'
 
 export const Route = createFileRoute('/admin/dashboard')({
   component: AdminDashboardPage,
@@ -964,14 +967,57 @@ function AddResidentDialog({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const form = useForm({
     defaultValues: {
+      // Basic Information
       firstName: '',
       middleName: '',
       lastName: '',
       suffix: '',
       sex: 'male' as 'male' | 'female' | 'other',
       birthdate: '',
+      // Location (Required)
+      block: '',
+      lot: '',
+      phase: '',
       purok: '',
-      seniorOrPwd: 'none' as 'none' | 'senior' | 'pwd' | 'both',
+      // Personal Details (Required)
+      civilStatus: 'Single' as 'Single' | 'Married' | 'Widowed' | 'Separated' | 'Live-in',
+      educationalAttainment: 'No Grade' as 'No Grade' | 'Elementary' | 'High School' | 'Vocational' | 'College' | 'Graduate School',
+      // Employment
+      occupation: '',
+      employmentStatus: 'Unemployed' as 'Employed' | 'Unemployed',
+      // Voter Status
+      isResidentVoter: false,
+      isRegisteredVoter: false,
+      // Sectoral Information
+      isOFW: false,
+      isPWD: false,
+      isOSY: false,
+      isSeniorCitizen: false,
+      isSoloParent: false,
+      isIP: false,
+      isMigrant: false,
+      // Contact
+      contactNumber: '',
+      email: '',
+      // Income & Livelihood
+      estimatedMonthlyIncome: undefined as number | undefined,
+      primarySourceOfLivelihood: '',
+      // Housing
+      tenureStatus: '',
+      housingType: 'Owned' as 'Owned' | 'Rented' | 'Shared',
+      constructionType: 'Light' as 'Light' | 'Medium' | 'Heavy',
+      sanitationMethod: '',
+      religion: '',
+      // Health
+      debilitatingDiseases: '',
+      isBedBound: undefined as boolean | undefined,
+      isWheelchairBound: false,
+      isDialysisPatient: false,
+      isCancerPatient: false,
+      // Pension
+      isNationalPensioner: false,
+      isLocalPensioner: false,
+      // Status
       status: 'resident' as 'resident' | 'pending' | 'deceased' | 'moved',
     },
     validators: {
@@ -980,7 +1026,12 @@ function AddResidentDialog({
         if (!value.firstName?.trim()) errors.firstName = 'First name is required'
         if (!value.lastName?.trim()) errors.lastName = 'Last name is required'
         if (!value.birthdate) errors.birthdate = 'Birthdate is required'
+        if (!value.block?.trim()) errors.block = 'Block is required'
+        if (!value.lot?.trim()) errors.lot = 'Lot is required'
+        if (!value.phase?.trim()) errors.phase = 'Phase is required'
         if (!value.purok?.trim()) errors.purok = 'Purok is required'
+        if (!value.civilStatus) errors.civilStatus = 'Civil status is required'
+        if (!value.educationalAttainment) errors.educationalAttainment = 'Educational attainment is required'
         return Object.keys(errors).length > 0 ? errors : undefined
       },
     },
@@ -996,8 +1047,39 @@ function AddResidentDialog({
           suffix: value.suffix || undefined,
           sex: value.sex,
           birthdate: birthdateTimestamp,
+          block: value.block,
+          lot: value.lot,
+          phase: value.phase,
           purok: value.purok,
-          seniorOrPwd: value.seniorOrPwd,
+          civilStatus: value.civilStatus,
+          educationalAttainment: value.educationalAttainment,
+          occupation: value.occupation || undefined,
+          employmentStatus: value.employmentStatus,
+          isResidentVoter: value.isResidentVoter,
+          isRegisteredVoter: value.isRegisteredVoter,
+          isOFW: value.isOFW,
+          isPWD: value.isPWD,
+          isOSY: value.isOSY,
+          isSeniorCitizen: value.isSeniorCitizen,
+          isSoloParent: value.isSoloParent,
+          isIP: value.isIP,
+          isMigrant: value.isMigrant,
+          contactNumber: value.contactNumber || undefined,
+          email: value.email || undefined,
+          estimatedMonthlyIncome: value.estimatedMonthlyIncome,
+          primarySourceOfLivelihood: value.primarySourceOfLivelihood || undefined,
+          tenureStatus: value.tenureStatus || undefined,
+          housingType: value.housingType,
+          constructionType: value.constructionType,
+          sanitationMethod: value.sanitationMethod || undefined,
+          religion: value.religion || undefined,
+          debilitatingDiseases: value.debilitatingDiseases || undefined,
+          isBedBound: value.isBedBound,
+          isWheelchairBound: value.isWheelchairBound,
+          isDialysisPatient: value.isDialysisPatient,
+          isCancerPatient: value.isCancerPatient,
+          isNationalPensioner: value.isNationalPensioner,
+          isLocalPensioner: value.isLocalPensioner,
           status: value.status,
         })
         toast.success('Resident created successfully')
@@ -1024,7 +1106,7 @@ function AddResidentDialog({
         }
       }}
     >
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add New Resident</DialogTitle>
           <DialogDescription>
@@ -1039,7 +1121,19 @@ function AddResidentDialog({
             form.handleSubmit()
           }}
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+          <Tabs defaultValue="basic" className="w-full">
+            <TabsList className="grid w-full grid-cols-6">
+              <TabsTrigger value="basic">Basic</TabsTrigger>
+              <TabsTrigger value="location">Location</TabsTrigger>
+              <TabsTrigger value="personal">Personal</TabsTrigger>
+              <TabsTrigger value="employment">Employment</TabsTrigger>
+              <TabsTrigger value="sectoral">Sectoral</TabsTrigger>
+              <TabsTrigger value="health">Health</TabsTrigger>
+            </TabsList>
+
+            {/* Basic Information Tab */}
+            <TabsContent value="basic" className="space-y-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* First Name */}
             <form.Field
               name="firstName"
@@ -1226,37 +1320,6 @@ function AddResidentDialog({
               }}
             />
 
-            {/* Purok */}
-            <form.Field
-              name="purok"
-              validators={{
-                onChange: ({ value }) => {
-                  if (!value?.trim()) {
-                    return { message: 'Purok is required' }
-                  }
-                  return undefined
-                },
-              }}
-              children={(field) => {
-                const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
-                return (
-                  <Field data-invalid={isInvalid}>
-                    <FieldLabel htmlFor={field.name}>
-                      Purok <span className="text-red-500">*</span>
-                    </FieldLabel>
-                    <Input
-                      id={field.name}
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      aria-invalid={isInvalid}
-                    />
-                    {isInvalid && <FieldError errors={field.state.meta.errors} />}
-                  </Field>
-                )
-              }}
-            />
-
             {/* Status */}
             <form.Field
               name="status"
@@ -1280,31 +1343,782 @@ function AddResidentDialog({
                 </Field>
               )}
             />
+              </div>
+            </TabsContent>
 
-            {/* Senior or PWD */}
-            <form.Field
-              name="seniorOrPwd"
-              children={(field) => (
-                <Field>
-                  <FieldLabel htmlFor={field.name}>Senior or PWD</FieldLabel>
-                  <Select
-                    value={field.state.value}
-                    onValueChange={(value) => field.handleChange(value as any)}
-                  >
-                    <SelectTrigger id={field.name}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      <SelectItem value="senior">Senior</SelectItem>
-                      <SelectItem value="pwd">PWD</SelectItem>
-                      <SelectItem value="both">Both (Senior & PWD)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-              )}
-            />
-          </div>
+            {/* Location Tab */}
+            <TabsContent value="location" className="space-y-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Block */}
+                <form.Field
+                  name="block"
+                  validators={{
+                    onChange: ({ value }) => {
+                      if (!value?.trim()) {
+                        return { message: 'Block is required' }
+                      }
+                      return undefined
+                    },
+                  }}
+                  children={(field) => {
+                    const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                    return (
+                      <Field data-invalid={isInvalid}>
+                        <FieldLabel htmlFor={field.name}>
+                          Block <span className="text-red-500">*</span>
+                        </FieldLabel>
+                        <Input
+                          id={field.name}
+                          value={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.value)}
+                          aria-invalid={isInvalid}
+                        />
+                        {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                      </Field>
+                    )
+                  }}
+                />
+
+                {/* Lot */}
+                <form.Field
+                  name="lot"
+                  validators={{
+                    onChange: ({ value }) => {
+                      if (!value?.trim()) {
+                        return { message: 'Lot is required' }
+                      }
+                      return undefined
+                    },
+                  }}
+                  children={(field) => {
+                    const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                    return (
+                      <Field data-invalid={isInvalid}>
+                        <FieldLabel htmlFor={field.name}>
+                          Lot <span className="text-red-500">*</span>
+                        </FieldLabel>
+                        <Input
+                          id={field.name}
+                          value={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.value)}
+                          aria-invalid={isInvalid}
+                        />
+                        {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                      </Field>
+                    )
+                  }}
+                />
+
+                {/* Phase */}
+                <form.Field
+                  name="phase"
+                  validators={{
+                    onChange: ({ value }) => {
+                      if (!value?.trim()) {
+                        return { message: 'Phase is required' }
+                      }
+                      return undefined
+                    },
+                  }}
+                  children={(field) => {
+                    const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                    return (
+                      <Field data-invalid={isInvalid}>
+                        <FieldLabel htmlFor={field.name}>
+                          Phase <span className="text-red-500">*</span>
+                        </FieldLabel>
+                        <Input
+                          id={field.name}
+                          value={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.value)}
+                          aria-invalid={isInvalid}
+                        />
+                        {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                      </Field>
+                    )
+                  }}
+                />
+
+                {/* Purok */}
+                <form.Field
+                  name="purok"
+                  validators={{
+                    onChange: ({ value }) => {
+                      if (!value?.trim()) {
+                        return { message: 'Purok is required' }
+                      }
+                      return undefined
+                    },
+                  }}
+                  children={(field) => {
+                    const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                    return (
+                      <Field data-invalid={isInvalid}>
+                        <FieldLabel htmlFor={field.name}>
+                          Purok <span className="text-red-500">*</span>
+                        </FieldLabel>
+                        <Input
+                          id={field.name}
+                          value={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.value)}
+                          aria-invalid={isInvalid}
+                        />
+                        {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                      </Field>
+                    )
+                  }}
+                />
+              </div>
+            </TabsContent>
+
+            {/* Personal Details Tab */}
+            <TabsContent value="personal" className="space-y-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Civil Status */}
+                <form.Field
+                  name="civilStatus"
+                  validators={{
+                    onChange: ({ value }) => {
+                      if (!value) {
+                        return { message: 'Civil status is required' }
+                      }
+                      return undefined
+                    },
+                  }}
+                  children={(field) => {
+                    const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                    return (
+                      <Field data-invalid={isInvalid}>
+                        <FieldLabel htmlFor={field.name}>
+                          Civil Status <span className="text-red-500">*</span>
+                        </FieldLabel>
+                        <Select
+                          value={field.state.value}
+                          onValueChange={(value) => field.handleChange(value as any)}
+                        >
+                          <SelectTrigger id={field.name}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Single">Single</SelectItem>
+                            <SelectItem value="Married">Married</SelectItem>
+                            <SelectItem value="Widowed">Widowed</SelectItem>
+                            <SelectItem value="Separated">Separated</SelectItem>
+                            <SelectItem value="Live-in">Live-in</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                      </Field>
+                    )
+                  }}
+                />
+
+                {/* Educational Attainment */}
+                <form.Field
+                  name="educationalAttainment"
+                  validators={{
+                    onChange: ({ value }) => {
+                      if (!value) {
+                        return { message: 'Educational attainment is required' }
+                      }
+                      return undefined
+                    },
+                  }}
+                  children={(field) => {
+                    const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                    return (
+                      <Field data-invalid={isInvalid}>
+                        <FieldLabel htmlFor={field.name}>
+                          Educational Attainment <span className="text-red-500">*</span>
+                        </FieldLabel>
+                        <Select
+                          value={field.state.value}
+                          onValueChange={(value) => field.handleChange(value as any)}
+                        >
+                          <SelectTrigger id={field.name}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="No Grade">No Grade</SelectItem>
+                            <SelectItem value="Elementary">Elementary</SelectItem>
+                            <SelectItem value="High School">High School</SelectItem>
+                            <SelectItem value="Vocational">Vocational</SelectItem>
+                            <SelectItem value="College">College</SelectItem>
+                            <SelectItem value="Graduate School">Graduate School</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                      </Field>
+                    )
+                  }}
+                />
+
+                {/* Contact Number */}
+                <form.Field
+                  name="contactNumber"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Contact Number</FieldLabel>
+                      <Input
+                        id={field.name}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        placeholder="09XX XXX XXXX"
+                      />
+                    </Field>
+                  )}
+                />
+
+                {/* Email */}
+                <form.Field
+                  name="email"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Email</FieldLabel>
+                      <Input
+                        id={field.name}
+                        type="email"
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        placeholder="email@example.com"
+                      />
+                    </Field>
+                  )}
+                />
+
+                {/* Religion */}
+                <form.Field
+                  name="religion"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Religion</FieldLabel>
+                      <Input
+                        id={field.name}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                      />
+                    </Field>
+                  )}
+                />
+              </div>
+            </TabsContent>
+
+            {/* Employment Tab */}
+            <TabsContent value="employment" className="space-y-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Occupation */}
+                <form.Field
+                  name="occupation"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Occupation/Profession</FieldLabel>
+                      <Input
+                        id={field.name}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                      />
+                    </Field>
+                  )}
+                />
+
+                {/* Employment Status */}
+                <form.Field
+                  name="employmentStatus"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Employment Status</FieldLabel>
+                      <Select
+                        value={field.state.value}
+                        onValueChange={(value) => field.handleChange(value as any)}
+                      >
+                        <SelectTrigger id={field.name}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Employed">Employed</SelectItem>
+                          <SelectItem value="Unemployed">Unemployed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  )}
+                />
+
+                {/* Estimated Monthly Income */}
+                <form.Field
+                  name="estimatedMonthlyIncome"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Estimated Monthly Income (PHP)</FieldLabel>
+                      <Input
+                        id={field.name}
+                        type="number"
+                        value={field.state.value || ''}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          field.handleChange(value === '' ? undefined : parseFloat(value))
+                        }}
+                        placeholder="0.00"
+                        min="0"
+                        step="0.01"
+                      />
+                    </Field>
+                  )}
+                />
+
+                {/* Primary Source of Livelihood */}
+                <form.Field
+                  name="primarySourceOfLivelihood"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Primary Source of Livelihood</FieldLabel>
+                      <Input
+                        id={field.name}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                      />
+                    </Field>
+                  )}
+                />
+
+                {/* Tenure Status */}
+                <form.Field
+                  name="tenureStatus"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Tenure Status</FieldLabel>
+                      <Input
+                        id={field.name}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                      />
+                    </Field>
+                  )}
+                />
+
+                {/* Housing Type */}
+                <form.Field
+                  name="housingType"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Housing Type</FieldLabel>
+                      <Select
+                        value={field.state.value}
+                        onValueChange={(value) => field.handleChange(value as any)}
+                      >
+                        <SelectTrigger id={field.name}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Owned">Owned</SelectItem>
+                          <SelectItem value="Rented">Rented</SelectItem>
+                          <SelectItem value="Shared">Shared</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  )}
+                />
+
+                {/* Construction Type */}
+                <form.Field
+                  name="constructionType"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Construction Type</FieldLabel>
+                      <Select
+                        value={field.state.value}
+                        onValueChange={(value) => field.handleChange(value as any)}
+                      >
+                        <SelectTrigger id={field.name}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Light">Light</SelectItem>
+                          <SelectItem value="Medium">Medium</SelectItem>
+                          <SelectItem value="Heavy">Heavy</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  )}
+                />
+
+                {/* Sanitation Method */}
+                <form.Field
+                  name="sanitationMethod"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Sanitation Method</FieldLabel>
+                      <Input
+                        id={field.name}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                      />
+                    </Field>
+                  )}
+                />
+              </div>
+            </TabsContent>
+
+            {/* Sectoral Information Tab */}
+            <TabsContent value="sectoral" className="space-y-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Voter Status */}
+                <form.Field
+                  name="isResidentVoter"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          Resident Voter
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isRegisteredVoter"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          Registered Voter
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                {/* Sectoral Flags */}
+                <form.Field
+                  name="isOFW"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          OFW (Overseas Filipino Worker)
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isPWD"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          PWD (Person with Disability)
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isOSY"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          OSY (Out of School Youth)
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isSeniorCitizen"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          Senior Citizen
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isSoloParent"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          Solo Parent
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isIP"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          IP (Indigenous People)
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isMigrant"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          Migrant
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                {/* Pension Status */}
+                <form.Field
+                  name="isNationalPensioner"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          National Pensioner
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isLocalPensioner"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          Local Pensioner
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+              </div>
+            </TabsContent>
+
+            {/* Health Information Tab */}
+            <TabsContent value="health" className="space-y-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Debilitating Diseases */}
+                <form.Field
+                  name="debilitatingDiseases"
+                  children={(field) => (
+                    <Field className="md:col-span-2">
+                      <FieldLabel htmlFor={field.name}>Debilitating Diseases</FieldLabel>
+                      <Textarea
+                        id={field.name}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        placeholder="List any debilitating diseases..."
+                        rows={3}
+                      />
+                    </Field>
+                  )}
+                />
+
+                {/* Health Flags */}
+                <form.Field
+                  name="isBedBound"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value ?? false}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked ? true : undefined)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          Bed Bound
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isWheelchairBound"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          Wheelchair Bound
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isDialysisPatient"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          Dialysis Patient
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isCancerPatient"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          Cancer Patient
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          <Separator className="my-4" />
 
           <DialogFooter>
             <Button
@@ -1352,14 +2166,57 @@ function EditResidentDialog({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const form = useForm({
     defaultValues: {
+      // Basic Information
       firstName: resident.firstName,
       middleName: resident.middleName,
       lastName: resident.lastName,
       suffix: (resident as any).suffix || '',
       sex: resident.sex,
       birthdate: format(new Date(resident.birthdate), 'yyyy-MM-dd'),
+      // Location (Required)
+      block: (resident as any).block || '',
+      lot: (resident as any).lot || '',
+      phase: (resident as any).phase || '',
       purok: resident.purok,
-      seniorOrPwd: (resident as any).seniorOrPwd || 'none',
+      // Personal Details (Required)
+      civilStatus: (resident as any).civilStatus || 'Single',
+      educationalAttainment: (resident as any).educationalAttainment || 'No Grade',
+      // Employment
+      occupation: (resident as any).occupation || '',
+      employmentStatus: (resident as any).employmentStatus || 'Unemployed',
+      // Voter Status
+      isResidentVoter: (resident as any).isResidentVoter ?? false,
+      isRegisteredVoter: (resident as any).isRegisteredVoter ?? false,
+      // Sectoral Information
+      isOFW: (resident as any).isOFW ?? false,
+      isPWD: (resident as any).isPWD ?? false,
+      isOSY: (resident as any).isOSY ?? false,
+      isSeniorCitizen: (resident as any).isSeniorCitizen ?? false,
+      isSoloParent: (resident as any).isSoloParent ?? false,
+      isIP: (resident as any).isIP ?? false,
+      isMigrant: (resident as any).isMigrant ?? false,
+      // Contact
+      contactNumber: (resident as any).contactNumber || '',
+      email: (resident as any).email || '',
+      // Income & Livelihood
+      estimatedMonthlyIncome: (resident as any).estimatedMonthlyIncome,
+      primarySourceOfLivelihood: (resident as any).primarySourceOfLivelihood || '',
+      // Housing
+      tenureStatus: (resident as any).tenureStatus || '',
+      housingType: (resident as any).housingType || 'Owned',
+      constructionType: (resident as any).constructionType || 'Light',
+      sanitationMethod: (resident as any).sanitationMethod || '',
+      religion: (resident as any).religion || '',
+      // Health
+      debilitatingDiseases: (resident as any).debilitatingDiseases || '',
+      isBedBound: (resident as any).isBedBound,
+      isWheelchairBound: (resident as any).isWheelchairBound ?? false,
+      isDialysisPatient: (resident as any).isDialysisPatient ?? false,
+      isCancerPatient: (resident as any).isCancerPatient ?? false,
+      // Pension
+      isNationalPensioner: (resident as any).isNationalPensioner ?? false,
+      isLocalPensioner: (resident as any).isLocalPensioner ?? false,
+      // Status
       status: resident.status,
     },
     validators: {
@@ -1368,7 +2225,12 @@ function EditResidentDialog({
         if (!value.firstName) errors.firstName = 'First name is required'
         if (!value.lastName) errors.lastName = 'Last name is required'
         if (!value.birthdate) errors.birthdate = 'Birthdate is required'
+        if (!value.block?.trim()) errors.block = 'Block is required'
+        if (!value.lot?.trim()) errors.lot = 'Lot is required'
+        if (!value.phase?.trim()) errors.phase = 'Phase is required'
         if (!value.purok) errors.purok = 'Purok is required'
+        if (!value.civilStatus) errors.civilStatus = 'Civil status is required'
+        if (!value.educationalAttainment) errors.educationalAttainment = 'Educational attainment is required'
         return Object.keys(errors).length > 0 ? errors : undefined
       },
     },
@@ -1385,8 +2247,39 @@ function EditResidentDialog({
           suffix: value.suffix || undefined,
           sex: value.sex,
           birthdate: birthdateTimestamp,
+          block: value.block,
+          lot: value.lot,
+          phase: value.phase,
           purok: value.purok,
-          seniorOrPwd: value.seniorOrPwd,
+          civilStatus: value.civilStatus,
+          educationalAttainment: value.educationalAttainment,
+          occupation: value.occupation || undefined,
+          employmentStatus: value.employmentStatus,
+          isResidentVoter: value.isResidentVoter,
+          isRegisteredVoter: value.isRegisteredVoter,
+          isOFW: value.isOFW,
+          isPWD: value.isPWD,
+          isOSY: value.isOSY,
+          isSeniorCitizen: value.isSeniorCitizen,
+          isSoloParent: value.isSoloParent,
+          isIP: value.isIP,
+          isMigrant: value.isMigrant,
+          contactNumber: value.contactNumber || undefined,
+          email: value.email || undefined,
+          estimatedMonthlyIncome: value.estimatedMonthlyIncome,
+          primarySourceOfLivelihood: value.primarySourceOfLivelihood || undefined,
+          tenureStatus: value.tenureStatus || undefined,
+          housingType: value.housingType,
+          constructionType: value.constructionType,
+          sanitationMethod: value.sanitationMethod || undefined,
+          religion: value.religion || undefined,
+          debilitatingDiseases: value.debilitatingDiseases || undefined,
+          isBedBound: value.isBedBound,
+          isWheelchairBound: value.isWheelchairBound,
+          isDialysisPatient: value.isDialysisPatient,
+          isCancerPatient: value.isCancerPatient,
+          isNationalPensioner: value.isNationalPensioner,
+          isLocalPensioner: value.isLocalPensioner,
           status: value.status,
         })
         toast.success('Resident updated successfully')
@@ -1413,7 +2306,7 @@ function EditResidentDialog({
         }
       }}
     >
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Resident</DialogTitle>
           <DialogDescription>
@@ -1428,7 +2321,19 @@ function EditResidentDialog({
             form.handleSubmit()
           }}
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+          <Tabs defaultValue="basic" className="w-full">
+            <TabsList className="grid w-full grid-cols-6">
+              <TabsTrigger value="basic">Basic</TabsTrigger>
+              <TabsTrigger value="location">Location</TabsTrigger>
+              <TabsTrigger value="personal">Personal</TabsTrigger>
+              <TabsTrigger value="employment">Employment</TabsTrigger>
+              <TabsTrigger value="sectoral">Sectoral</TabsTrigger>
+              <TabsTrigger value="health">Health</TabsTrigger>
+            </TabsList>
+
+            {/* Basic Information Tab */}
+            <TabsContent value="basic" className="space-y-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Same fields as Add Resident Dialog */}
             {/* First Name */}
             <form.Field
@@ -1608,37 +2513,6 @@ function EditResidentDialog({
               }}
             />
 
-            {/* Purok */}
-            <form.Field
-              name="purok"
-              validators={{
-                onChange: ({ value }) => {
-                  if (!value?.trim()) {
-                    return { message: 'Purok is required' }
-                  }
-                  return undefined
-                },
-              }}
-              children={(field) => {
-                const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
-                return (
-                  <Field data-invalid={isInvalid}>
-                    <FieldLabel htmlFor={field.name}>
-                      Purok <span className="text-red-500">*</span>
-                    </FieldLabel>
-                    <Input
-                      id={field.name}
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      aria-invalid={isInvalid}
-                    />
-                    {isInvalid && <FieldError errors={field.state.meta.errors} />}
-                  </Field>
-                )
-              }}
-            />
-
             {/* Status */}
             <form.Field
               name="status"
@@ -1662,31 +2536,782 @@ function EditResidentDialog({
                 </Field>
               )}
             />
+              </div>
+            </TabsContent>
 
-            {/* Senior or PWD */}
-            <form.Field
-              name="seniorOrPwd"
-              children={(field) => (
-                <Field>
-                  <FieldLabel htmlFor={field.name}>Senior or PWD</FieldLabel>
-                  <Select
-                    value={field.state.value}
-                    onValueChange={(value) => field.handleChange(value as any)}
-                  >
-                    <SelectTrigger id={field.name}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      <SelectItem value="senior">Senior</SelectItem>
-                      <SelectItem value="pwd">PWD</SelectItem>
-                      <SelectItem value="both">Both (Senior & PWD)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-              )}
-            />
-          </div>
+            {/* Location Tab - Same as AddResidentDialog */}
+            <TabsContent value="location" className="space-y-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Block */}
+                <form.Field
+                  name="block"
+                  validators={{
+                    onChange: ({ value }) => {
+                      if (!value?.trim()) {
+                        return { message: 'Block is required' }
+                      }
+                      return undefined
+                    },
+                  }}
+                  children={(field) => {
+                    const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                    return (
+                      <Field data-invalid={isInvalid}>
+                        <FieldLabel htmlFor={field.name}>
+                          Block <span className="text-red-500">*</span>
+                        </FieldLabel>
+                        <Input
+                          id={field.name}
+                          value={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.value)}
+                          aria-invalid={isInvalid}
+                        />
+                        {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                      </Field>
+                    )
+                  }}
+                />
+
+                {/* Lot */}
+                <form.Field
+                  name="lot"
+                  validators={{
+                    onChange: ({ value }) => {
+                      if (!value?.trim()) {
+                        return { message: 'Lot is required' }
+                      }
+                      return undefined
+                    },
+                  }}
+                  children={(field) => {
+                    const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                    return (
+                      <Field data-invalid={isInvalid}>
+                        <FieldLabel htmlFor={field.name}>
+                          Lot <span className="text-red-500">*</span>
+                        </FieldLabel>
+                        <Input
+                          id={field.name}
+                          value={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.value)}
+                          aria-invalid={isInvalid}
+                        />
+                        {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                      </Field>
+                    )
+                  }}
+                />
+
+                {/* Phase */}
+                <form.Field
+                  name="phase"
+                  validators={{
+                    onChange: ({ value }) => {
+                      if (!value?.trim()) {
+                        return { message: 'Phase is required' }
+                      }
+                      return undefined
+                    },
+                  }}
+                  children={(field) => {
+                    const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                    return (
+                      <Field data-invalid={isInvalid}>
+                        <FieldLabel htmlFor={field.name}>
+                          Phase <span className="text-red-500">*</span>
+                        </FieldLabel>
+                        <Input
+                          id={field.name}
+                          value={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.value)}
+                          aria-invalid={isInvalid}
+                        />
+                        {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                      </Field>
+                    )
+                  }}
+                />
+
+                {/* Purok */}
+                <form.Field
+                  name="purok"
+                  validators={{
+                    onChange: ({ value }) => {
+                      if (!value?.trim()) {
+                        return { message: 'Purok is required' }
+                      }
+                      return undefined
+                    },
+                  }}
+                  children={(field) => {
+                    const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                    return (
+                      <Field data-invalid={isInvalid}>
+                        <FieldLabel htmlFor={field.name}>
+                          Purok <span className="text-red-500">*</span>
+                        </FieldLabel>
+                        <Input
+                          id={field.name}
+                          value={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.value)}
+                          aria-invalid={isInvalid}
+                        />
+                        {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                      </Field>
+                    )
+                  }}
+                />
+              </div>
+            </TabsContent>
+
+            {/* Personal Details Tab - Same as AddResidentDialog */}
+            <TabsContent value="personal" className="space-y-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Civil Status */}
+                <form.Field
+                  name="civilStatus"
+                  validators={{
+                    onChange: ({ value }) => {
+                      if (!value) {
+                        return { message: 'Civil status is required' }
+                      }
+                      return undefined
+                    },
+                  }}
+                  children={(field) => {
+                    const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                    return (
+                      <Field data-invalid={isInvalid}>
+                        <FieldLabel htmlFor={field.name}>
+                          Civil Status <span className="text-red-500">*</span>
+                        </FieldLabel>
+                        <Select
+                          value={field.state.value}
+                          onValueChange={(value) => field.handleChange(value as any)}
+                        >
+                          <SelectTrigger id={field.name}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Single">Single</SelectItem>
+                            <SelectItem value="Married">Married</SelectItem>
+                            <SelectItem value="Widowed">Widowed</SelectItem>
+                            <SelectItem value="Separated">Separated</SelectItem>
+                            <SelectItem value="Live-in">Live-in</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                      </Field>
+                    )
+                  }}
+                />
+
+                {/* Educational Attainment */}
+                <form.Field
+                  name="educationalAttainment"
+                  validators={{
+                    onChange: ({ value }) => {
+                      if (!value) {
+                        return { message: 'Educational attainment is required' }
+                      }
+                      return undefined
+                    },
+                  }}
+                  children={(field) => {
+                    const isInvalid = field.state.meta.isTouched && field.state.meta.errors.length > 0
+                    return (
+                      <Field data-invalid={isInvalid}>
+                        <FieldLabel htmlFor={field.name}>
+                          Educational Attainment <span className="text-red-500">*</span>
+                        </FieldLabel>
+                        <Select
+                          value={field.state.value}
+                          onValueChange={(value) => field.handleChange(value as any)}
+                        >
+                          <SelectTrigger id={field.name}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="No Grade">No Grade</SelectItem>
+                            <SelectItem value="Elementary">Elementary</SelectItem>
+                            <SelectItem value="High School">High School</SelectItem>
+                            <SelectItem value="Vocational">Vocational</SelectItem>
+                            <SelectItem value="College">College</SelectItem>
+                            <SelectItem value="Graduate School">Graduate School</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                      </Field>
+                    )
+                  }}
+                />
+
+                {/* Contact Number */}
+                <form.Field
+                  name="contactNumber"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Contact Number</FieldLabel>
+                      <Input
+                        id={field.name}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        placeholder="09XX XXX XXXX"
+                      />
+                    </Field>
+                  )}
+                />
+
+                {/* Email */}
+                <form.Field
+                  name="email"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Email</FieldLabel>
+                      <Input
+                        id={field.name}
+                        type="email"
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        placeholder="email@example.com"
+                      />
+                    </Field>
+                  )}
+                />
+
+                {/* Religion */}
+                <form.Field
+                  name="religion"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Religion</FieldLabel>
+                      <Input
+                        id={field.name}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                      />
+                    </Field>
+                  )}
+                />
+              </div>
+            </TabsContent>
+
+            {/* Employment Tab - Same as AddResidentDialog */}
+            <TabsContent value="employment" className="space-y-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Occupation */}
+                <form.Field
+                  name="occupation"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Occupation/Profession</FieldLabel>
+                      <Input
+                        id={field.name}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                      />
+                    </Field>
+                  )}
+                />
+
+                {/* Employment Status */}
+                <form.Field
+                  name="employmentStatus"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Employment Status</FieldLabel>
+                      <Select
+                        value={field.state.value}
+                        onValueChange={(value) => field.handleChange(value as any)}
+                      >
+                        <SelectTrigger id={field.name}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Employed">Employed</SelectItem>
+                          <SelectItem value="Unemployed">Unemployed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  )}
+                />
+
+                {/* Estimated Monthly Income */}
+                <form.Field
+                  name="estimatedMonthlyIncome"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Estimated Monthly Income (PHP)</FieldLabel>
+                      <Input
+                        id={field.name}
+                        type="number"
+                        value={field.state.value || ''}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          field.handleChange(value === '' ? undefined : parseFloat(value))
+                        }}
+                        placeholder="0.00"
+                        min="0"
+                        step="0.01"
+                      />
+                    </Field>
+                  )}
+                />
+
+                {/* Primary Source of Livelihood */}
+                <form.Field
+                  name="primarySourceOfLivelihood"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Primary Source of Livelihood</FieldLabel>
+                      <Input
+                        id={field.name}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                      />
+                    </Field>
+                  )}
+                />
+
+                {/* Tenure Status */}
+                <form.Field
+                  name="tenureStatus"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Tenure Status</FieldLabel>
+                      <Input
+                        id={field.name}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                      />
+                    </Field>
+                  )}
+                />
+
+                {/* Housing Type */}
+                <form.Field
+                  name="housingType"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Housing Type</FieldLabel>
+                      <Select
+                        value={field.state.value}
+                        onValueChange={(value) => field.handleChange(value as any)}
+                      >
+                        <SelectTrigger id={field.name}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Owned">Owned</SelectItem>
+                          <SelectItem value="Rented">Rented</SelectItem>
+                          <SelectItem value="Shared">Shared</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  )}
+                />
+
+                {/* Construction Type */}
+                <form.Field
+                  name="constructionType"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Construction Type</FieldLabel>
+                      <Select
+                        value={field.state.value}
+                        onValueChange={(value) => field.handleChange(value as any)}
+                      >
+                        <SelectTrigger id={field.name}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Light">Light</SelectItem>
+                          <SelectItem value="Medium">Medium</SelectItem>
+                          <SelectItem value="Heavy">Heavy</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  )}
+                />
+
+                {/* Sanitation Method */}
+                <form.Field
+                  name="sanitationMethod"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>Sanitation Method</FieldLabel>
+                      <Input
+                        id={field.name}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                      />
+                    </Field>
+                  )}
+                />
+              </div>
+            </TabsContent>
+
+            {/* Sectoral Information Tab - Same as AddResidentDialog */}
+            <TabsContent value="sectoral" className="space-y-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Voter Status */}
+                <form.Field
+                  name="isResidentVoter"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          Resident Voter
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isRegisteredVoter"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          Registered Voter
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                {/* Sectoral Flags */}
+                <form.Field
+                  name="isOFW"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          OFW (Overseas Filipino Worker)
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isPWD"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          PWD (Person with Disability)
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isOSY"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          OSY (Out of School Youth)
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isSeniorCitizen"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          Senior Citizen
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isSoloParent"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          Solo Parent
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isIP"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          IP (Indigenous People)
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isMigrant"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          Migrant
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                {/* Pension Status */}
+                <form.Field
+                  name="isNationalPensioner"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          National Pensioner
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isLocalPensioner"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          Local Pensioner
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+              </div>
+            </TabsContent>
+
+            {/* Health Information Tab - Same as AddResidentDialog */}
+            <TabsContent value="health" className="space-y-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Debilitating Diseases */}
+                <form.Field
+                  name="debilitatingDiseases"
+                  children={(field) => (
+                    <Field className="md:col-span-2">
+                      <FieldLabel htmlFor={field.name}>Debilitating Diseases</FieldLabel>
+                      <Textarea
+                        id={field.name}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        placeholder="List any debilitating diseases..."
+                        rows={3}
+                      />
+                    </Field>
+                  )}
+                />
+
+                {/* Health Flags */}
+                <form.Field
+                  name="isBedBound"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value ?? false}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked ? true : undefined)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          Bed Bound
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isWheelchairBound"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          Wheelchair Bound
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isDialysisPatient"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          Dialysis Patient
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+
+                <form.Field
+                  name="isCancerPatient"
+                  children={(field) => (
+                    <Field>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={field.name}
+                          checked={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <FieldLabel htmlFor={field.name} className="cursor-pointer">
+                          Cancer Patient
+                        </FieldLabel>
+                      </div>
+                    </Field>
+                  )}
+                />
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          <Separator className="my-4" />
 
           <DialogFooter>
             <Button
