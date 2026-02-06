@@ -6,7 +6,7 @@ import { api } from '../../../convex/_generated/api'
 import type { Doc } from '../../../convex/_generated/dataModel'
 import { RouteGuard } from '@/lib/route-guards'
 import { AdminHeaderLayout } from '@/components/AdminHeader'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -39,11 +39,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Users, BarChart3, Clock, Search, Plus, MoreVertical, Edit, Trash2, Eye, Upload, ChevronLeft, ChevronRight, Save, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react'
+import { Users, BarChart3, Clock, Search, Plus, MoreVertical, Edit, Trash2, Eye, Upload, ChevronLeft, ChevronRight, Save, AlertTriangle, CheckCircle2, XCircle, Check, FileSpreadsheet } from 'lucide-react'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useForm } from '@tanstack/react-form'
 import { format } from 'date-fns'
+import * as z from 'zod'
 import {
   Field,
   FieldDescription,
@@ -557,6 +558,754 @@ function PendingResidentConfirmationsSection() {
   )
 }
 
+// Excel Import Dialog Component
+function ExcelImportDialog({
+  open,
+  onOpenChange,
+  onSuccess,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSuccess: () => void
+}) {
+  const [step, setStep] = useState<'upload' | 'mapping' | 'preview' | 'importing' | 'results'>('upload')
+  const [file, setFile] = useState<File | null>(null)
+  const [parsedData, setParsedData] = useState<any[]>([])
+  const [headers, setHeaders] = useState<string[]>([])
+  const [columnMapping, setColumnMapping] = useState<Record<string, string>>({})
+  const [previewRows, setPreviewRows] = useState<any[]>([])
+  const [importResults, setImportResults] = useState<{
+    successful: number
+    skipped: number
+    errors: Array<{ row: number; error: string }>
+  } | null>(null)
+  const [isImporting, setIsImporting] = useState(false)
+  const importMutation = useMutation(api.residents.importResidents)
+
+  // Expected columns mapping
+  const expectedColumns = {
+    // Required
+    block: 'Block',
+    lot: 'Lot',
+    lastName: 'Last Name',
+    firstName: 'First Name',
+    middleName: 'Middle Name',
+    suffix: 'Suffix',
+    birthdate: 'Birthdate',
+    sex: 'Sex',
+    phase: 'Phase',
+    purok: 'Purok',
+    civilStatus: 'Civil Status',
+    educationalAttainment: 'Educational Attainment',
+    // Optional
+    residentId: 'Resident ID',
+    occupation: 'Occupation',
+    employmentStatus: 'Employment Status',
+    contactNumber: 'Contact Number',
+    email: 'Email',
+    isResidentVoter: 'Is Resident Voter',
+    isRegisteredVoter: 'Is Registered Voter',
+    isOFW: 'Is OFW',
+    isPWD: 'Is PWD',
+    isOSY: 'Is OSY',
+    isSeniorCitizen: 'Is Senior Citizen',
+    isSoloParent: 'Is Solo Parent',
+    isIP: 'Is IP',
+    isMigrant: 'Is Migrant',
+    estimatedMonthlyIncome: 'Estimated Monthly Income',
+    primarySourceOfLivelihood: 'Primary Source of Livelihood',
+    tenureStatus: 'Tenure Status',
+    housingType: 'Housing Type',
+    constructionType: 'Construction Type',
+    sanitationMethod: 'Sanitation Method',
+    religion: 'Religion',
+    debilitatingDiseases: 'Debilitating Diseases',
+    isBedBound: 'Is Bed Bound',
+    isWheelchairBound: 'Is Wheelchair Bound',
+    isDialysisPatient: 'Is Dialysis Patient',
+    isCancerPatient: 'Is Cancer Patient',
+    isNationalPensioner: 'Is National Pensioner',
+    isLocalPensioner: 'Is Local Pensioner',
+  }
+
+  // Auto-detect column mapping with improved matching
+  const autoDetectMapping = (fileHeaders: string[]) => {
+    const mapping: Record<string, string> = {}
+    const lowerHeaders = fileHeaders.map(h => h.toLowerCase().trim())
+    
+    // Common variations for each field
+    const fieldVariations: Record<string, string[]> = {
+      block: ['block', 'blk'],
+      lot: ['lot'],
+      lastName: ['last name', 'lastname', 'surname', 'family name'],
+      firstName: ['first name', 'firstname', 'given name', 'name'],
+      middleName: ['middle name', 'middlename', 'middle initial', 'mi'],
+      suffix: ['suffix', 'qualifier', 'jr', 'sr'],
+      birthdate: ['birthdate', 'birth date', 'date of birth', 'dob', 'birthday'],
+      sex: ['sex', 'gender'],
+      phase: ['phase'],
+      purok: ['purok', 'zone'],
+      civilStatus: ['civil status', 'civilstatus', 'marital status', 'status'],
+      educationalAttainment: ['educational attainment', 'education', 'educational', 'educ'],
+      residentId: ['resident id', 'residentid', 'id', 'resident id'],
+      occupation: ['occupation', 'job', 'profession'],
+      employmentStatus: ['employment status', 'employment', 'employed'],
+      contactNumber: ['contact number', 'contact', 'phone', 'mobile', 'cell'],
+      email: ['email', 'e-mail'],
+      isResidentVoter: ['is resident voter', 'resident voter', 'residentvoter'],
+      isRegisteredVoter: ['is registered voter', 'registered voter', 'registeredvoter'],
+      isOFW: ['is ofw', 'ofw'],
+      isPWD: ['is pwd', 'pwd'],
+      isOSY: ['is osy', 'osy'],
+      isSeniorCitizen: ['is senior citizen', 'senior citizen', 'senior'],
+      isSoloParent: ['is solo parent', 'solo parent', 'soloparent'],
+      isIP: ['is ip', 'ip', 'indigenous'],
+      isMigrant: ['is migrant', 'migrant'],
+      estimatedMonthlyIncome: ['estimated monthly income', 'income', 'monthly income'],
+      primarySourceOfLivelihood: ['primary source of livelihood', 'livelihood', 'source'],
+      tenureStatus: ['tenure status', 'tenure'],
+      housingType: ['housing type', 'housing'],
+      constructionType: ['construction type', 'construction'],
+      sanitationMethod: ['sanitation method', 'sanitation'],
+      religion: ['religion'],
+      debilitatingDiseases: ['debilitating diseases', 'diseases', 'health'],
+      isBedBound: ['is bed bound', 'bed bound', 'bedbound'],
+      isWheelchairBound: ['is wheelchair bound', 'wheelchair bound', 'wheelchair'],
+      isDialysisPatient: ['is dialysis patient', 'dialysis'],
+      isCancerPatient: ['is cancer patient', 'cancer'],
+      isNationalPensioner: ['is national pensioner', 'national pensioner'],
+      isLocalPensioner: ['is local pensioner', 'local pensioner'],
+    }
+    
+    Object.entries(expectedColumns).forEach(([key, expectedName]) => {
+      const variations = fieldVariations[key] || [expectedName.toLowerCase()]
+      const lowerExpected = expectedName.toLowerCase()
+      
+      // Try exact match first
+      let index = lowerHeaders.findIndex(h => h === lowerExpected)
+      
+      // Try variations
+      if (index === -1) {
+        for (const variation of variations) {
+          index = lowerHeaders.findIndex(h => {
+            const normalizedH = h.toLowerCase().trim()
+            const normalizedVar = variation.toLowerCase().trim()
+            return normalizedH === normalizedVar || 
+                   normalizedH.includes(normalizedVar) || 
+                   normalizedVar.includes(normalizedH) ||
+                   normalizedH.replace(/\s+/g, '') === normalizedVar.replace(/\s+/g, '')
+          })
+          if (index !== -1) break
+        }
+      }
+      
+      // Fallback: partial match
+      if (index === -1) {
+        index = lowerHeaders.findIndex(h => {
+          const normalizedH = h.toLowerCase().trim()
+          const normalizedExpected = lowerExpected.trim()
+          return normalizedH.includes(normalizedExpected) || 
+                 normalizedExpected.includes(normalizedH)
+        })
+      }
+      
+      if (index !== -1) {
+        mapping[key] = fileHeaders[index]
+      }
+    })
+
+    return mapping
+  }
+
+  // Handle file upload and parsing
+  const handleFileSelect = async (selectedFile: File) => {
+    if (!selectedFile) {
+      console.error('No file selected')
+      return
+    }
+
+    console.log('Processing file:', selectedFile.name, 'Type:', selectedFile.type, 'Size:', selectedFile.size)
+
+    // Check file type - be more lenient with CSV files
+    const validTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+      'application/vnd.ms-excel', // .xls
+      'text/csv', // .csv
+      'text/comma-separated-values', // Alternative CSV MIME type
+      'application/csv', // Another CSV MIME type
+    ]
+    const validExtensions = ['.xlsx', '.xls', '.csv']
+    const fileExtension = selectedFile.name.substring(selectedFile.name.lastIndexOf('.')).toLowerCase()
+    
+    // More lenient validation - check extension if MIME type doesn't match
+    const isValidType = validTypes.includes(selectedFile.type) || validExtensions.includes(fileExtension)
+    
+    if (!isValidType) {
+      console.error('Invalid file type:', selectedFile.type, fileExtension)
+      toast.error(`Invalid file type. Please upload a .xlsx, .xls, or .csv file. (Detected: ${selectedFile.type || fileExtension})`)
+      return
+    }
+
+    setFile(selectedFile)
+    console.log('File validated, starting to parse...')
+
+    try {
+      // Dynamically import xlsx
+      const XLSX = await import('xlsx')
+      const reader = new FileReader()
+
+      reader.onload = (e) => {
+        try {
+          console.log('File read successfully, parsing...')
+          const data = e.target?.result
+          
+          // Determine file type and read accordingly
+          let workbook
+          if (fileExtension === '.csv') {
+            // For CSV files, use CSV parsing
+            const csvText = data as string
+            workbook = XLSX.read(csvText, { type: 'string' })
+          } else {
+            // For Excel files, use binary
+            workbook = XLSX.read(data, { type: 'binary' })
+          }
+          
+          if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+            toast.error('No sheets found in file')
+            return
+          }
+          
+          const sheetName = workbook.SheetNames[0]
+          const worksheet = workbook.Sheets[sheetName]
+          
+          // Get raw data to preserve Block/Lot numbers
+          // We'll process dates manually only for birthdate columns
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
+            header: 1, 
+            defval: '',
+            raw: true // Get raw values to prevent Excel's auto-date conversion
+          }) as any[][]
+          
+          // Also get cell types to detect which cells Excel formatted as dates
+          const cellTypes: Record<string, string> = {}
+          const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1')
+          for (let R = range.s.r; R <= range.e.r; ++R) {
+            for (let C = range.s.c; C <= range.e.c; ++C) {
+              const cellAddress = XLSX.utils.encode_cell({ r: R, c: C })
+              const cell = worksheet[cellAddress]
+              if (cell && cell.t) {
+                cellTypes[`${R},${C}`] = cell.t // 'n' = number, 's' = string, 'd' = date, 'b' = boolean
+              }
+            }
+          }
+
+          console.log('Parsed data rows:', jsonData.length)
+
+          if (jsonData.length === 0) {
+            toast.error('File is empty')
+            return
+          }
+
+          // First row is headers
+          const fileHeaders = jsonData[0].map((h: any) => String(h || '').trim()).filter(Boolean)
+          console.log('File headers:', fileHeaders)
+          
+          if (fileHeaders.length === 0) {
+            toast.error('No headers found in file')
+            return
+          }
+
+          // Convert rows to objects
+          const rows = jsonData.slice(1).map((row: any[], rowIndex: number) => {
+            const obj: any = {}
+            fileHeaders.forEach((header, colIndex) => {
+              const value = row[colIndex]
+              const cellType = cellTypes[`${rowIndex + 1},${colIndex}`] // +1 because row 0 is headers
+              
+              // Only convert to date if this column is mapped to birthdate
+              const lowerHeader = header.toLowerCase().trim()
+              const isBirthdateColumn = lowerHeader.includes('birthdate') || 
+                                       lowerHeader.includes('birth date') || 
+                                       lowerHeader.includes('date of birth') || 
+                                       lowerHeader === 'dob' ||
+                                       lowerHeader.includes('birthday')
+              
+              if (value !== undefined && value !== null && value !== '') {
+                // Only treat as date if it's actually a birthdate column AND Excel marked it as a date
+                if (isBirthdateColumn && (cellType === 'd' || (typeof value === 'number' && value > 1 && value < 100000))) {
+                  // Handle Excel date serial numbers
+                  if (typeof value === 'number') {
+                    const excelEpoch = new Date(1899, 11, 30)
+                    const jsDate = new Date(excelEpoch.getTime() + value * 24 * 60 * 60 * 1000)
+                    const month = String(jsDate.getMonth() + 1).padStart(2, '0')
+                    const day = String(jsDate.getDate()).padStart(2, '0')
+                    const year = jsDate.getFullYear()
+                    obj[header] = `${month}/${day}/${year}`
+                  } else {
+                    obj[header] = String(value).trim()
+                  }
+                } else {
+                  // For non-date columns (Block, Lot, etc.), always use raw number value
+                  // This prevents Excel's auto-date conversion from affecting Block/Lot
+                  if (typeof value === 'number') {
+                    // Keep as number string - this is the actual Block/Lot value
+                    obj[header] = String(value)
+                  } else {
+                    obj[header] = String(value).trim()
+                  }
+                }
+              } else {
+                obj[header] = ''
+              }
+            })
+            return obj
+          }).filter(row => {
+            // Filter out completely empty rows
+            return Object.values(row).some(val => val !== '')
+          })
+
+          console.log('Valid data rows:', rows.length)
+
+          setHeaders(fileHeaders)
+          setParsedData(rows)
+          
+          // Auto-detect column mapping
+          const detectedMapping = autoDetectMapping(fileHeaders)
+          console.log('Auto-detected mapping:', detectedMapping)
+          setColumnMapping(detectedMapping)
+
+          // Check if all required columns are mapped
+          const requiredColumns = ['block', 'lot', 'lastName', 'firstName', 'birthdate', 'sex', 'phase', 'purok', 'civilStatus', 'educationalAttainment']
+          const allRequiredMapped = requiredColumns.every(col => detectedMapping[col])
+          
+          // Show preview (first 10 rows)
+          setPreviewRows(rows.slice(0, 10))
+
+          // If all required columns are auto-detected, skip mapping step and go to preview
+          if (allRequiredMapped) {
+            setStep('preview')
+            toast.success(`File loaded: ${rows.length} rows found. All required columns auto-detected!`)
+          } else {
+            setStep('mapping')
+            const missing = requiredColumns.filter(col => !detectedMapping[col])
+            toast.warning(`File loaded: ${rows.length} rows found. Please map missing columns: ${missing.map(c => expectedColumns[c as keyof typeof expectedColumns]).join(', ')}`)
+          }
+        } catch (error: any) {
+          console.error('Error parsing file:', error)
+          toast.error(`Error parsing file: ${error.message}`)
+        }
+      }
+
+      reader.onerror = (error) => {
+        console.error('FileReader error:', error)
+        toast.error('Error reading file')
+      }
+
+      // Use appropriate reading method based on file type
+      if (fileExtension === '.csv') {
+        reader.readAsText(selectedFile, 'UTF-8')
+      } else {
+        reader.readAsBinaryString(selectedFile)
+      }
+    } catch (error: any) {
+      toast.error(`Error loading file: ${error.message}`)
+    }
+  }
+
+  // Handle import
+  const handleImport = async () => {
+    if (parsedData.length === 0) {
+      toast.error('No data to import')
+      return
+    }
+
+    // Validate required columns are mapped
+    const requiredColumns = ['block', 'lot', 'lastName', 'firstName', 'birthdate', 'sex', 'phase', 'purok', 'civilStatus', 'educationalAttainment']
+    const missingColumns = requiredColumns.filter(col => !columnMapping[col])
+    
+    if (missingColumns.length > 0) {
+      toast.error(`Missing required column mappings: ${missingColumns.map(c => expectedColumns[c as keyof typeof expectedColumns]).join(', ')}`)
+      return
+    }
+
+    setIsImporting(true)
+    setStep('importing')
+
+    try {
+      // Transform data using column mapping
+      const transformedRows = parsedData.map((row) => {
+        const transformed: any = {}
+        Object.entries(columnMapping).forEach(([key, header]) => {
+          if (header && row[header] !== undefined) {
+            transformed[key] = row[header]
+          }
+        })
+        return transformed
+      })
+
+      // Call import mutation
+      const results = await importMutation({
+        rows: transformedRows,
+        batchSize: 100,
+      })
+
+      setImportResults(results)
+      setStep('results')
+
+      if (results.successful > 0) {
+        toast.success(`Successfully imported ${results.successful} residents`)
+      }
+      if (results.skipped > 0) {
+        toast.warning(`${results.skipped} rows were skipped`)
+      }
+    } catch (error: any) {
+      toast.error(`Import failed: ${error.message}`)
+      setStep('mapping')
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
+  // Reset dialog
+  const handleReset = () => {
+    setFile(null)
+    setParsedData([])
+    setHeaders([])
+    setColumnMapping({})
+    setPreviewRows([])
+    setImportResults(null)
+    setStep('upload')
+  }
+
+  const handleClose = (open: boolean) => {
+    if (!isImporting) {
+      if (!open) {
+        handleReset()
+      }
+      onOpenChange(open)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileSpreadsheet className="h-5 w-5" />
+            Import Residents from Excel
+          </DialogTitle>
+          <DialogDescription>
+            Upload an Excel or CSV file to import resident data in bulk
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto">
+          {step === 'upload' && (
+            <div className="space-y-4">
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+                <Upload className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                <p className="text-sm text-gray-600 mb-4">
+                  Select an Excel (.xlsx, .xls) or CSV file
+                </p>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+                  onChange={(e) => {
+                    const selectedFile = e.target.files?.[0]
+                    if (selectedFile) {
+                      console.log('File selected:', selectedFile.name, selectedFile.type)
+                      handleFileSelect(selectedFile)
+                    }
+                    // Reset input so onChange fires even if same file is selected again
+                    e.target.value = ''
+                  }}
+                  className="hidden"
+                  id="excel-file-input"
+                />
+                <label htmlFor="excel-file-input" className="cursor-pointer">
+                  <Button type="button" variant="outline" onClick={() => {
+                    const input = document.getElementById('excel-file-input') as HTMLInputElement
+                    input?.click()
+                  }}>
+                    Choose File
+                  </Button>
+                </label>
+                {file && (
+                  <p className="mt-2 text-sm text-gray-500">{file.name}</p>
+                )}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                <p className="font-semibold mb-2">Required columns:</p>
+                <p>Block, Lot, Last Name, First Name, Birthdate, Sex, Phase, Purok, Civil Status, Educational Attainment</p>
+                <p className="font-semibold mt-3 mb-2">Optional columns:</p>
+                <p>Middle Name, Suffix, Occupation, Employment Status, Contact Number, Email, and all sectoral/health fields</p>
+              </div>
+            </div>
+          )}
+
+          {step === 'mapping' && (
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold mb-2">Column Mapping</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Map your Excel columns to the system fields. Required fields are marked with *
+                </p>
+              </div>
+              <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                {Object.entries(expectedColumns).map(([key, label]) => {
+                  const isRequired = ['block', 'lot', 'lastName', 'firstName', 'birthdate', 'sex', 'phase', 'purok', 'civilStatus', 'educationalAttainment'].includes(key)
+                  return (
+                    <div key={key} className="flex items-center gap-4">
+                      <div className="w-48 text-sm font-medium">
+                        {label} {isRequired && <span className="text-red-500">*</span>}
+                      </div>
+                      <Select
+                        value={columnMapping[key] || ''}
+                        onValueChange={(value) => {
+                          setColumnMapping(prev => ({
+                            ...prev,
+                            [key]: value === 'none' ? '' : value,
+                          }))
+                        }}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Select column..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">-- None --</SelectItem>
+                          {headers.map((header) => (
+                            <SelectItem key={header} value={header}>
+                              {header}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="mt-4">
+                <h3 className="font-semibold mb-2">Preview (First 10 rows)</h3>
+                <div className="border rounded-lg overflow-auto max-h-[300px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        {Object.entries(columnMapping)
+                          .filter(([_, header]) => header)
+                          .map(([key, header]) => (
+                            <TableHead key={key} className="text-xs">
+                              {expectedColumns[key as keyof typeof expectedColumns]}
+                            </TableHead>
+                          ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {previewRows.map((row, idx) => (
+                        <TableRow key={idx}>
+                          {Object.entries(columnMapping)
+                            .filter(([_, header]) => header)
+                            .map(([key, header]) => (
+                              <TableCell key={key} className="text-xs">
+                                {row[header] || '-'}
+                              </TableCell>
+                            ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === 'preview' && (
+            <div className="space-y-4">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="flex items-center gap-2 text-green-800">
+                  <CheckCircle2 className="h-5 w-5" />
+                  <p className="font-semibold">All required columns auto-detected!</p>
+                </div>
+                <p className="text-sm text-green-700 mt-2">
+                  Review the preview below and click "Import" to proceed.
+                </p>
+              </div>
+              
+              <div>
+                <h3 className="font-semibold mb-2">Preview (First 10 rows)</h3>
+                <div className="border rounded-lg overflow-auto max-h-[400px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        {Object.entries(columnMapping)
+                          .filter(([_, header]) => header)
+                          .map(([key, header]) => (
+                            <TableHead key={key} className="text-xs">
+                              {expectedColumns[key as keyof typeof expectedColumns]}
+                            </TableHead>
+                          ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {previewRows.map((row, idx) => (
+                        <TableRow key={idx}>
+                          {Object.entries(columnMapping)
+                            .filter(([_, header]) => header)
+                            .map(([key, header]) => (
+                              <TableCell key={key} className="text-xs">
+                                {row[header] || '-'}
+                              </TableCell>
+                            ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Total rows to import: {parsedData.length}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {step === 'importing' && (
+            <div className="flex flex-col items-center justify-center py-8">
+              <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+              <p className="text-lg font-medium">Importing residents...</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Processing {parsedData.length} rows in batches of 100
+              </p>
+            </div>
+          )}
+
+          {step === 'results' && importResults && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-green-600">
+                        {importResults.successful}
+                      </div>
+                      <div className="text-sm text-muted-foreground">Successful</div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-yellow-600">
+                        {importResults.skipped}
+                      </div>
+                      <div className="text-sm text-muted-foreground">Skipped</div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-red-600">
+                        {importResults.errors.length}
+                      </div>
+                      <div className="text-sm text-muted-foreground">Errors</div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {importResults.errors.length > 0 && (
+                <div>
+                  <h3 className="font-semibold mb-2">Errors:</h3>
+                  <div className="border rounded-lg overflow-auto max-h-[300px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Row</TableHead>
+                          <TableHead>Error</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {importResults.errors.map((error, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell>{error.row}</TableCell>
+                            <TableCell className="text-red-600">{error.error}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          {step === 'upload' && (
+            <>
+              <Button variant="outline" onClick={() => handleClose(false)}>
+                Cancel
+              </Button>
+            </>
+          )}
+          {step === 'mapping' && (
+            <>
+              <Button variant="outline" onClick={() => setStep('upload')}>
+                Back
+              </Button>
+              <Button onClick={() => {
+                // Validate required columns before allowing import
+                const requiredColumns = ['block', 'lot', 'lastName', 'firstName', 'birthdate', 'sex', 'phase', 'purok', 'civilStatus', 'educationalAttainment']
+                const missingColumns = requiredColumns.filter(col => !columnMapping[col])
+                if (missingColumns.length > 0) {
+                  toast.error(`Missing required column mappings: ${missingColumns.map(c => expectedColumns[c as keyof typeof expectedColumns]).join(', ')}`)
+                  return
+                }
+                setStep('preview')
+              }}>
+                Review & Import
+              </Button>
+            </>
+          )}
+          {step === 'preview' && (
+            <>
+              <Button variant="outline" onClick={() => setStep('mapping')}>
+                Adjust Mapping
+              </Button>
+              <Button onClick={handleImport} disabled={isImporting}>
+                {isImporting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Importing...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Import {parsedData.length} Rows
+                  </>
+                )}
+              </Button>
+            </>
+          )}
+          {step === 'results' && (
+            <>
+              <Button variant="outline" onClick={handleReset}>
+                Import Another File
+              </Button>
+              <Button onClick={() => {
+                onSuccess()
+                handleClose(false)
+              }}>
+                Done
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // Residents Management Component
 function ResidentsManagementSection() {
   const { isLoaded: authLoaded, isSignedIn } = useAuth()
@@ -572,6 +1321,7 @@ function ResidentsManagementSection() {
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [residentToEdit, setResidentToEdit] = useState<Doc<'residents'> | null>(null)
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
   // ✅ OPTIMIZATION: Refresh key to force query refetch after mutations
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -702,7 +1452,7 @@ function ResidentsManagementSection() {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
               <Upload className="h-4 w-4 mr-2" />
               Import Excel
             </Button>
@@ -896,6 +1646,16 @@ function ResidentsManagementSection() {
           />
         )}
 
+        {/* Excel Import Dialog */}
+        <ExcelImportDialog
+          open={importDialogOpen}
+          onOpenChange={setImportDialogOpen}
+          onSuccess={() => {
+            refreshQueries()
+            setImportDialogOpen(false)
+          }}
+        />
+
         {/* Delete Confirmation Dialog */}
         <Dialog
           open={deleteDialogOpen}
@@ -965,6 +1725,7 @@ function AddResidentDialog({
   onCreate: (args: any) => Promise<any>
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
+
   const form = useForm({
     defaultValues: {
       // Basic Information
@@ -1106,7 +1867,7 @@ function AddResidentDialog({
         }
       }}
     >
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-7xl w-[95vw] max-h-[95vh] overflow-hidden flex flex-col p-6">
         <DialogHeader>
           <DialogTitle>Add New Resident</DialogTitle>
           <DialogDescription>
@@ -1119,6 +1880,13 @@ function AddResidentDialog({
             e.preventDefault()
             e.stopPropagation()
             form.handleSubmit()
+          }}
+          onKeyDown={(e) => {
+            // Prevent Enter key from auto-submitting form
+            // User must explicitly click the submit button
+            if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
+              e.preventDefault()
+            }
           }}
         >
           <Tabs defaultValue="basic" className="w-full">
@@ -1134,9 +1902,9 @@ function AddResidentDialog({
             {/* Basic Information Tab */}
             <TabsContent value="basic" className="space-y-4 py-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* First Name */}
-            <form.Field
-              name="firstName"
+                  {/* First Name */}
+                  <form.Field
+                    name="firstName"
               validators={{
                 onChange: ({ value }) => {
                   if (!value?.trim()) {
@@ -1343,8 +2111,8 @@ function AddResidentDialog({
                 </Field>
               )}
             />
-              </div>
-            </TabsContent>
+                </div>
+              </TabsContent>
 
             {/* Location Tab */}
             <TabsContent value="location" className="space-y-4 py-4">
@@ -1472,8 +2240,8 @@ function AddResidentDialog({
                     )
                   }}
                 />
-              </div>
-            </TabsContent>
+                </div>
+              </TabsContent>
 
             {/* Personal Details Tab */}
             <TabsContent value="personal" className="space-y-4 py-4">
@@ -1607,8 +2375,8 @@ function AddResidentDialog({
                     </Field>
                   )}
                 />
-              </div>
-            </TabsContent>
+                </div>
+              </TabsContent>
 
             {/* Employment Tab */}
             <TabsContent value="employment" className="space-y-4 py-4">
@@ -1767,8 +2535,8 @@ function AddResidentDialog({
                     </Field>
                   )}
                 />
-              </div>
-            </TabsContent>
+                </div>
+              </TabsContent>
 
             {/* Sectoral Information Tab */}
             <TabsContent value="sectoral" className="space-y-4 py-4">
@@ -2007,7 +2775,7 @@ function AddResidentDialog({
                   )}
                 />
               </div>
-            </TabsContent>
+              </TabsContent>
 
             {/* Health Information Tab */}
             <TabsContent value="health" className="space-y-4 py-4">
@@ -2115,7 +2883,7 @@ function AddResidentDialog({
                   )}
                 />
               </div>
-            </TabsContent>
+              </TabsContent>
           </Tabs>
 
           <Separator className="my-4" />
@@ -2306,7 +3074,7 @@ function EditResidentDialog({
         }
       }}
     >
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-7xl w-[95vw] max-h-[95vh] overflow-hidden flex flex-col p-6">
         <DialogHeader>
           <DialogTitle>Edit Resident</DialogTitle>
           <DialogDescription>

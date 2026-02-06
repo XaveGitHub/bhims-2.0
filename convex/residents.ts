@@ -1044,3 +1044,502 @@ export const remove = mutation({
     return args.id
   },
 })
+
+// ==================== EXCEL IMPORT HELPERS ====================
+
+/**
+ * Parse date string to timestamp
+ * Accepts multiple formats: MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD, DD-MM-YYYY, MM-DD-YYYY
+ */
+function parseDate(dateStr: string): number | null {
+  if (!dateStr || typeof dateStr !== "string") return null
+  
+  const trimmed = dateStr.trim()
+  if (!trimmed) return null
+
+  // Try different date formats
+  const formats = [
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, // MM/DD/YYYY or DD/MM/YYYY
+    /^(\d{4})-(\d{1,2})-(\d{1,2})$/, // YYYY-MM-DD
+    /^(\d{1,2})-(\d{1,2})-(\d{4})$/, // DD-MM-YYYY or MM-DD-YYYY
+  ]
+
+  for (const format of formats) {
+    const match = trimmed.match(format)
+    if (match) {
+      let year: number, month: number, day: number
+      
+      if (format === formats[1]) {
+        // YYYY-MM-DD
+        year = parseInt(match[1], 10)
+        month = parseInt(match[2], 10)
+        day = parseInt(match[3], 10)
+      } else if (format === formats[0]) {
+        // MM/DD/YYYY or DD/MM/YYYY - try both interpretations
+        const m1 = parseInt(match[1], 10)
+        const m2 = parseInt(match[2], 10)
+        const y = parseInt(match[3], 10)
+        
+        // Heuristic: if first number > 12, it's DD/MM/YYYY
+        if (m1 > 12) {
+          day = m1
+          month = m2
+          year = y
+        } else if (m2 > 12) {
+          month = m1
+          day = m2
+          year = y
+        } else {
+          // Ambiguous - prefer MM/DD/YYYY (US format)
+          month = m1
+          day = m2
+          year = y
+        }
+      } else {
+        // DD-MM-YYYY or MM-DD-YYYY
+        const m1 = parseInt(match[1], 10)
+        const m2 = parseInt(match[2], 10)
+        const y = parseInt(match[3], 10)
+        
+        if (m1 > 12) {
+          day = m1
+          month = m2
+          year = y
+        } else if (m2 > 12) {
+          month = m1
+          day = m2
+          year = y
+        } else {
+          // Ambiguous - prefer MM-DD-YYYY
+          month = m1
+          day = m2
+          year = y
+        }
+      }
+
+      // Validate date
+      if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1900 || year > 2100) {
+        continue
+      }
+
+      const date = new Date(year, month - 1, day)
+      if (date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day) {
+        return date.getTime()
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * Parse boolean/yes-no string to boolean
+ * Accepts: Yes/No, Y/N, true/false, 1/0 (case-insensitive)
+ */
+function parseBoolean(value: string | boolean | number | null | undefined): boolean {
+  if (typeof value === "boolean") return value
+  if (typeof value === "number") return value !== 0
+  if (!value) return false
+  
+  const str = String(value).trim().toLowerCase()
+  return str === "yes" || str === "y" || str === "true" || str === "1"
+}
+
+/**
+ * Find or create household by Block+Lot
+ * Returns household ID
+ */
+async function findOrCreateHousehold(
+  ctx: any,
+  block: string,
+  lot: string,
+  phase: string,
+  purok: string
+): Promise<string> {
+  // Check if household exists
+  const existing = await ctx.db
+    .query("households")
+    .withIndex("by_block_lot", (q) => q.eq("block", block).eq("lot", lot))
+    .first()
+
+  if (existing) {
+    return existing._id
+  }
+
+  // Create new household
+  const now = Date.now()
+  const householdId = await ctx.db.insert("households", {
+    block,
+    lot,
+    phase,
+    purok,
+    createdAt: now,
+    updatedAt: now,
+  })
+
+  return householdId
+}
+
+/**
+ * Check for duplicate resident
+ * Checks by: Resident ID (if provided) OR Last Name + First Name + Birthdate
+ */
+async function findDuplicateResident(
+  ctx: any,
+  residentId: string | null,
+  lastName: string,
+  firstName: string,
+  birthdate: number
+): Promise<string | null> {
+  // Check by Resident ID first
+  if (residentId) {
+    const existingById = await ctx.db
+      .query("residents")
+      .withIndex("by_residentId", (q) => q.eq("residentId", residentId))
+      .first()
+    
+    if (existingById) {
+      return existingById._id
+    }
+  }
+
+  // Check by Name + Birthdate combination
+  // Note: This requires scanning, but we'll optimize with index
+  const residents = await ctx.db
+    .query("residents")
+    .withIndex("by_name", (q) => q.eq("lastName", lastName).eq("firstName", firstName))
+    .collect()
+
+  for (const resident of residents) {
+    // Check if birthdate matches (within same day to account for timezone)
+    const residentDate = new Date(resident.birthdate)
+    const checkDate = new Date(birthdate)
+    
+    if (
+      residentDate.getFullYear() === checkDate.getFullYear() &&
+      residentDate.getMonth() === checkDate.getMonth() &&
+      residentDate.getDate() === checkDate.getDate()
+    ) {
+      return resident._id
+    }
+  }
+
+  return null
+}
+
+// ==================== EXCEL IMPORT MUTATION ====================
+
+/**
+ * Import residents from Excel/CSV data
+ * Processes in batches of 100 rows
+ * Auto-generates Resident IDs, auto-creates households, handles duplicates
+ * 
+ * @param rows - Array of parsed row data from Excel
+ * @param batchSize - Number of rows to process per batch (default: 100)
+ * @returns Import results with success/skip/error counts
+ */
+export const importResidents = mutation({
+  args: {
+    rows: v.array(
+      v.object({
+        // Required fields
+        block: v.string(),
+        lot: v.string(),
+        lastName: v.string(),
+        firstName: v.string(),
+        birthdate: v.string(), // Will be parsed to timestamp
+        sex: v.string(), // Will be normalized
+        phase: v.string(),
+        purok: v.string(),
+        civilStatus: v.string(), // Will be validated
+        educationalAttainment: v.string(), // Will be validated
+        
+        // Optional fields
+        middleName: v.optional(v.string()),
+        suffix: v.optional(v.string()),
+        residentId: v.optional(v.string()), // Optional - will auto-generate if not provided
+        
+        occupation: v.optional(v.string()),
+        employmentStatus: v.optional(v.string()),
+        contactNumber: v.optional(v.string()),
+        email: v.optional(v.string()),
+        
+        // Boolean fields (as strings, will be parsed)
+        isResidentVoter: v.optional(v.string()),
+        isRegisteredVoter: v.optional(v.string()),
+        isOFW: v.optional(v.string()),
+        isPWD: v.optional(v.string()),
+        isOSY: v.optional(v.string()),
+        isSeniorCitizen: v.optional(v.string()),
+        isSoloParent: v.optional(v.string()),
+        isIP: v.optional(v.string()),
+        isMigrant: v.optional(v.string()),
+        
+        estimatedMonthlyIncome: v.optional(v.string()), // Will be parsed to number
+        primarySourceOfLivelihood: v.optional(v.string()),
+        tenureStatus: v.optional(v.string()),
+        housingType: v.optional(v.string()),
+        constructionType: v.optional(v.string()),
+        sanitationMethod: v.optional(v.string()),
+        religion: v.optional(v.string()),
+        
+        debilitatingDiseases: v.optional(v.string()),
+        isBedBound: v.optional(v.string()),
+        isWheelchairBound: v.optional(v.string()),
+        isDialysisPatient: v.optional(v.string()),
+        isCancerPatient: v.optional(v.string()),
+        isNationalPensioner: v.optional(v.string()),
+        isLocalPensioner: v.optional(v.string()),
+      })
+    ),
+    batchSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx)
+    if (!user) throw new Error("Unauthorized")
+
+    // Only admin/superadmin can import
+    if (user.role !== "admin" && user.role !== "superadmin") {
+      throw new Error("Unauthorized: Only admins can import residents")
+    }
+
+    const batchSize = args.batchSize ?? 100
+    const results = {
+      successful: 0,
+      skipped: 0,
+      errors: [] as Array<{ row: number; error: string }>,
+    }
+
+    // Process in batches
+    for (let i = 0; i < args.rows.length; i += batchSize) {
+      const batch = args.rows.slice(i, i + batchSize)
+      
+      for (let j = 0; j < batch.length; j++) {
+        const row = batch[j]
+        const rowNumber = i + j + 1 // 1-indexed for user display
+
+        try {
+          // Validate required fields
+          if (!row.block || !row.lot || !row.lastName || !row.firstName || !row.birthdate || !row.sex || !row.phase || !row.purok || !row.civilStatus || !row.educationalAttainment) {
+            results.errors.push({
+              row: rowNumber,
+              error: "Missing required fields",
+            })
+            results.skipped++
+            continue
+          }
+
+          // Parse birthdate
+          const birthdateTimestamp = parseDate(row.birthdate)
+          if (!birthdateTimestamp) {
+            results.errors.push({
+              row: rowNumber,
+              error: `Invalid birthdate format: ${row.birthdate}`,
+            })
+            results.skipped++
+            continue
+          }
+
+          // Normalize sex
+          const sexLower = row.sex.trim().toLowerCase()
+          let sex: "male" | "female" | "other"
+          if (sexLower === "male" || sexLower === "m") {
+            sex = "male"
+          } else if (sexLower === "female" || sexLower === "f") {
+            sex = "female"
+          } else {
+            sex = "other"
+          }
+
+          // Validate civil status
+          const validCivilStatuses = ["Single", "Married", "Widowed", "Separated", "Live-in"]
+          const civilStatus = row.civilStatus.trim()
+          if (!validCivilStatuses.includes(civilStatus)) {
+            results.errors.push({
+              row: rowNumber,
+              error: `Invalid civil status: ${civilStatus}. Must be one of: ${validCivilStatuses.join(", ")}`,
+            })
+            results.skipped++
+            continue
+          }
+
+          // Validate educational attainment
+          const validEducation = ["No Grade", "Elementary", "High School", "Vocational", "College", "Grad School"]
+          const education = row.educationalAttainment.trim()
+          if (!validEducation.includes(education)) {
+            results.errors.push({
+              row: rowNumber,
+              error: `Invalid educational attainment: ${education}. Must be one of: ${validEducation.join(", ")}`,
+            })
+            results.skipped++
+            continue
+          }
+
+          // Validate employment status
+          let employmentStatus: "Employed" | "Unemployed" = "Unemployed"
+          if (row.employmentStatus) {
+            const empStatus = row.employmentStatus.trim()
+            if (empStatus === "Employed") {
+              employmentStatus = "Employed"
+            } else if (empStatus !== "Unemployed") {
+              results.errors.push({
+                row: rowNumber,
+                error: `Invalid employment status: ${empStatus}. Must be 'Employed' or 'Unemployed'`,
+              })
+              results.skipped++
+              continue
+            }
+          }
+
+          // Validate housing type
+          let housingType: "Owned" | "Rented" | "Shared" = "Owned"
+          if (row.housingType) {
+            const houseType = row.housingType.trim()
+            if (houseType === "Owned" || houseType === "Rented" || houseType === "Shared") {
+              housingType = houseType as "Owned" | "Rented" | "Shared"
+            } else {
+              results.errors.push({
+                row: rowNumber,
+                error: `Invalid housing type: ${houseType}. Must be 'Owned', 'Rented', or 'Shared'`,
+              })
+              results.skipped++
+              continue
+            }
+          }
+
+          // Validate construction type
+          let constructionType: "Light" | "Medium" | "Heavy" = "Medium"
+          if (row.constructionType) {
+            const constType = row.constructionType.trim()
+            if (constType === "Light" || constType === "Medium" || constType === "Heavy") {
+              constructionType = constType as "Light" | "Medium" | "Heavy"
+            } else {
+              results.errors.push({
+                row: rowNumber,
+                error: `Invalid construction type: ${constType}. Must be 'Light', 'Medium', or 'Heavy'`,
+              })
+              results.skipped++
+              continue
+            }
+          }
+
+          // Check for duplicate
+          const duplicateId = await findDuplicateResident(
+            ctx,
+            row.residentId || null,
+            row.lastName.trim(),
+            row.firstName.trim(),
+            birthdateTimestamp
+          )
+
+          if (duplicateId) {
+            results.errors.push({
+              row: rowNumber,
+              error: `Duplicate resident found (ID: ${duplicateId})`,
+            })
+            results.skipped++
+            continue
+          }
+
+          // Generate Resident ID if not provided
+          let residentId = row.residentId?.trim()
+          if (!residentId) {
+            residentId = await generateNextResidentId(ctx)
+          } else {
+            // Validate Resident ID format
+            if (!residentId.match(/^BH-\d{5}$/i)) {
+              // Invalid format, generate new one
+              residentId = await generateNextResidentId(ctx)
+            } else {
+              // Check if ID already exists
+              const existing = await ctx.db
+                .query("residents")
+                .withIndex("by_residentId", (q) => q.eq("residentId", residentId.toUpperCase()))
+                .first()
+              
+              if (existing) {
+                // Duplicate ID, generate new one
+                residentId = await generateNextResidentId(ctx)
+              } else {
+                residentId = residentId.toUpperCase()
+              }
+            }
+          }
+
+          // Find or create household
+          const householdId = await findOrCreateHousehold(
+            ctx,
+            row.block.trim(),
+            row.lot.trim(),
+            row.phase.trim(),
+            row.purok.trim()
+          )
+
+          // Parse optional fields
+          const estimatedIncome = row.estimatedMonthlyIncome
+            ? parseFloat(row.estimatedMonthlyIncome.replace(/[^0-9.]/g, "")) || undefined
+            : undefined
+
+          // Create resident
+          const now = Date.now()
+          await ctx.db.insert("residents", {
+            residentId,
+            block: row.block.trim(),
+            lot: row.lot.trim(),
+            phase: row.phase.trim(),
+            purok: row.purok.trim(),
+            firstName: row.firstName.trim(),
+            middleName: row.middleName?.trim() || "",
+            lastName: row.lastName.trim(),
+            suffix: row.suffix?.trim() || undefined,
+            sex,
+            birthdate: birthdateTimestamp,
+            civilStatus: civilStatus as "Single" | "Married" | "Widowed" | "Separated" | "Live-in",
+            educationalAttainment: education as "No Grade" | "Elementary" | "High School" | "Vocational" | "College" | "Grad School",
+            occupation: row.occupation?.trim() || undefined,
+            employmentStatus,
+            isResidentVoter: parseBoolean(row.isResidentVoter),
+            isRegisteredVoter: parseBoolean(row.isRegisteredVoter),
+            isOFW: parseBoolean(row.isOFW),
+            isPWD: parseBoolean(row.isPWD),
+            isOSY: parseBoolean(row.isOSY),
+            isSeniorCitizen: parseBoolean(row.isSeniorCitizen),
+            isSoloParent: parseBoolean(row.isSoloParent),
+            isIP: parseBoolean(row.isIP),
+            isMigrant: parseBoolean(row.isMigrant),
+            contactNumber: row.contactNumber?.trim() || undefined,
+            email: row.email?.trim() || undefined,
+            estimatedMonthlyIncome: estimatedIncome,
+            primarySourceOfLivelihood: row.primarySourceOfLivelihood?.trim() || undefined,
+            tenureStatus: row.tenureStatus?.trim() || undefined,
+            housingType,
+            constructionType,
+            sanitationMethod: row.sanitationMethod?.trim() || undefined,
+            religion: row.religion?.trim() || undefined,
+            debilitatingDiseases: row.debilitatingDiseases?.trim() || undefined,
+            isBedBound: parseBoolean(row.isBedBound) || undefined,
+            isWheelchairBound: parseBoolean(row.isWheelchairBound),
+            isDialysisPatient: parseBoolean(row.isDialysisPatient),
+            isCancerPatient: parseBoolean(row.isCancerPatient),
+            isNationalPensioner: parseBoolean(row.isNationalPensioner),
+            isLocalPensioner: parseBoolean(row.isLocalPensioner),
+            householdId,
+            status: "resident",
+            createdAt: now,
+            updatedAt: now,
+          })
+
+          results.successful++
+        } catch (error: any) {
+          results.errors.push({
+            row: rowNumber,
+            error: error.message || "Unknown error",
+          })
+          results.skipped++
+        }
+      }
+    }
+
+    return results
+  },
+})

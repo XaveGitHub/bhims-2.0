@@ -20,7 +20,7 @@ const config = defineConfig({
     dedupe: ['react', 'react-dom'],
   },
   optimizeDeps: {
-    include: ['use-sync-external-store'],
+    include: ['use-sync-external-store', 'xlsx'],
   },
   plugins: [
     devtools(),
