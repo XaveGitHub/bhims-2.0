@@ -9,6 +9,7 @@ import {
   FileText,
   Shield,
   UserCog,
+  Users,
 } from 'lucide-react'
 import { UserButton } from '@clerk/tanstack-react-start'
 
@@ -34,6 +35,12 @@ function AdminHeader() {
       url: userRole === 'superadmin' ? '/superadmin/dashboard' : '/admin/dashboard',
       icon: LayoutDashboard,
       roles: ['admin', 'superadmin'] as const,
+    },
+    {
+      title: 'Residents',
+      url: '/admin/residents',
+      icon: Users,
+      roles: ['admin'] as const,
     },
     {
       title: 'Settings',

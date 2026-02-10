@@ -4,8 +4,6 @@ import { useQuery, useMutation } from 'convex/react'
 import { useAuth } from '@clerk/tanstack-react-start'
 import { api } from '../../../convex/_generated/api'
 import type { Doc } from '../../../convex/_generated/dataModel'
-import { RouteGuard } from '@/lib/route-guards'
-import { AdminHeaderLayout } from '@/components/AdminHeader'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,11 +19,7 @@ export const Route = createFileRoute('/admin/residents/$id')({
 })
 
 function ResidentProfilePage() {
-  return (
-    <RouteGuard allowedRoles={['admin']}>
-      <ResidentProfileContent />
-    </RouteGuard>
-  )
+  return <ResidentProfileContent />
 }
 
 function ResidentProfileContent() {
@@ -244,29 +238,35 @@ function ResidentProfileContent() {
 
   if (!resident) {
     return (
-      <AdminHeaderLayout>
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <Card className="max-w-md">
-            <CardContent className="pt-6">
-              <p className="text-center text-gray-600">Resident not found</p>
-              <Button
-                variant="outline"
-                className="w-full mt-4"
-                onClick={() => navigate({ to: '/admin/dashboard' })}
-              >
-                Back to Dashboard
-              </Button>
-            </CardContent>
-          </Card>
+      <div className="flex flex-1 flex-col">
+        <div className="@container/main flex flex-1 flex-col gap-2">
+          <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6 px-4 lg:px-6">
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+              <Card className="max-w-md">
+                <CardContent className="pt-6">
+                  <p className="text-center text-gray-600">Resident not found</p>
+                  <Button
+                    variant="outline"
+                    className="w-full mt-4"
+                    onClick={() => navigate({ to: '/admin/dashboard' })}
+                  >
+                    Back to Dashboard
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </div>
-      </AdminHeaderLayout>
+      </div>
     )
   }
 
   return (
-    <AdminHeaderLayout>
-      <div className="min-h-screen bg-gray-50">
-        <div className="container mx-auto px-4 py-6">
+    <div className="flex flex-1 flex-col">
+      <div className="@container/main flex flex-1 flex-col gap-2">
+        <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6 px-4 lg:px-6">
+          <div className="min-h-screen bg-gray-50">
+            <div className="container mx-auto px-4 py-6">
           {/* Header */}
           <div className="mb-6 flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -349,7 +349,7 @@ function ResidentProfileContent() {
                           className="mt-1"
                         />
                       ) : (
-                        <p className="mt-1 text-sm font-medium">{resident.middleName || '-'}</p>
+                        <p className="mt-1 text-sm font-medium">{resident.middleName || "-"}</p>
                       )}
                     </div>
 
@@ -479,7 +479,7 @@ function ResidentProfileContent() {
                           className="mt-1"
                         />
                       ) : (
-                        <p className="mt-1 text-sm font-medium">{(resident as any).block || '-'}</p>
+                        <p className="mt-1 text-sm font-medium">{(resident as any).block || "-"}</p>
                       )}
                     </div>
 
@@ -496,7 +496,7 @@ function ResidentProfileContent() {
                           className="mt-1"
                         />
                       ) : (
-                        <p className="mt-1 text-sm font-medium">{(resident as any).lot || '-'}</p>
+                        <p className="mt-1 text-sm font-medium">{(resident as any).lot || "-"}</p>
                       )}
                     </div>
 
@@ -513,7 +513,7 @@ function ResidentProfileContent() {
                           className="mt-1"
                         />
                       ) : (
-                        <p className="mt-1 text-sm font-medium">{(resident as any).phase || '-'}</p>
+                        <p className="mt-1 text-sm font-medium">{(resident as any).phase || "-"}</p>
                       )}
                     </div>
 
@@ -671,6 +671,8 @@ function ResidentProfileContent() {
           </div>
         </div>
       </div>
-    </AdminHeaderLayout>
+    </div>
+  </div>
+</div>
   )
 }

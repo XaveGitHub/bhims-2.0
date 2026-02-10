@@ -62,12 +62,61 @@ export const getDashboardStats = query({
     // Calculate other residents (other gender)
     const otherResidents = totalResidents - maleResidents - femaleResidents
 
+    // Calculate age groups (single pass through residents)
+    const now = Date.now()
+    const ageGroups = {
+      age0to5: { total: 0, male: 0, female: 0 },
+      age6to12: { total: 0, male: 0, female: 0 },
+      age13to17: { total: 0, male: 0, female: 0 },
+      age18to35: { total: 0, male: 0, female: 0 },
+      age36to50: { total: 0, male: 0, female: 0 },
+      age51to65: { total: 0, male: 0, female: 0 },
+      age65plus: { total: 0, male: 0, female: 0 },
+    }
+
+    for (const resident of allResidents) {
+      const age = calculateAge(resident.birthdate, now)
+      const isMale = resident.sex === "male"
+      const isFemale = resident.sex === "female"
+
+      if (age >= 0 && age <= 5) {
+        ageGroups.age0to5.total++
+        if (isMale) ageGroups.age0to5.male++
+        if (isFemale) ageGroups.age0to5.female++
+      } else if (age >= 6 && age <= 12) {
+        ageGroups.age6to12.total++
+        if (isMale) ageGroups.age6to12.male++
+        if (isFemale) ageGroups.age6to12.female++
+      } else if (age >= 13 && age <= 17) {
+        ageGroups.age13to17.total++
+        if (isMale) ageGroups.age13to17.male++
+        if (isFemale) ageGroups.age13to17.female++
+      } else if (age >= 18 && age <= 35) {
+        ageGroups.age18to35.total++
+        if (isMale) ageGroups.age18to35.male++
+        if (isFemale) ageGroups.age18to35.female++
+      } else if (age >= 36 && age <= 50) {
+        ageGroups.age36to50.total++
+        if (isMale) ageGroups.age36to50.male++
+        if (isFemale) ageGroups.age36to50.female++
+      } else if (age >= 51 && age <= 65) {
+        ageGroups.age51to65.total++
+        if (isMale) ageGroups.age51to65.male++
+        if (isFemale) ageGroups.age51to65.female++
+      } else if (age > 65) {
+        ageGroups.age65plus.total++
+        if (isMale) ageGroups.age65plus.male++
+        if (isFemale) ageGroups.age65plus.female++
+      }
+    }
+
     const result = {
       residents: {
         total: totalResidents,
         male: maleResidents,
         female: femaleResidents,
         other: otherResidents,
+        ageGroups,
       },
       queue: {
         today: queueToday,
@@ -87,6 +136,51 @@ export const getDashboardStats = query({
   },
 })
 
+/**
+ * Get residents count by status
+ * Returns counts for: resident, pending, deceased, moved
+ * Optimized using indexed queries
+ */
+export const getResidentsByStatus = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx)
+    if (!user) throw new Error("Unauthorized")
+    
+    if (user.role !== "admin" && user.role !== "superadmin") {
+      throw new Error("Unauthorized: Only admins can view statistics")
+    }
+
+    // Query each status using indexed queries (parallel for efficiency)
+    const [residentCount, pendingCount, deceasedCount, movedCount] = await Promise.all([
+      ctx.db.query("residents").withIndex("by_status", (q) => q.eq("status", "resident")).collect(),
+      ctx.db.query("residents").withIndex("by_status", (q) => q.eq("status", "pending")).collect(),
+      ctx.db.query("residents").withIndex("by_status", (q) => q.eq("status", "deceased")).collect(),
+      ctx.db.query("residents").withIndex("by_status", (q) => q.eq("status", "moved")).collect(),
+    ])
+
+    return {
+      resident: residentCount.length,
+      pending: pendingCount.length,
+      deceased: deceasedCount.length,
+      moved: movedCount.length,
+    }
+  },
+})
+
+/**
+ * Helper: Calculate age from birthdate timestamp
+ */
+function calculateAge(birthdate: number, currentTime: number): number {
+  const today = new Date(currentTime)
+  const birth = new Date(birthdate)
+  let age = today.getFullYear() - birth.getFullYear()
+  const monthDiff = today.getMonth() - birth.getMonth()
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    age--
+  }
+  return age
+}
 
 /**
  * Helper: Get queue volume today

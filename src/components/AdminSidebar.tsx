@@ -14,6 +14,7 @@ import {
   SidebarProvider,
   SidebarHeader,
   SidebarFooter,
+  SidebarInset,
 } from './ui/sidebar'
 import {
   LayoutDashboard,
@@ -28,29 +29,31 @@ import { Shield, UserCog } from 'lucide-react'
 
 export function AdminSidebarLayout({ children }: { children: React.ReactNode }) {
   return (
-    <SidebarProvider>
-      <div className="flex min-h-screen w-full">
-        <AdminSidebar />
-        <main className="flex-1">{children}</main>
-      </div>
+    <SidebarProvider
+      style={
+        {
+          "--sidebar-width": "calc(var(--spacing) * 72)",
+          "--header-height": "calc(var(--spacing) * 12)",
+        } as React.CSSProperties
+      }
+    >
+      <AdminSidebar variant="inset" />
+      <SidebarInset>
+        {children}
+      </SidebarInset>
     </SidebarProvider>
   )
 }
 
-function AdminSidebar() {
+function AdminSidebar({ variant }: { variant?: "sidebar" | "floating" | "inset" }) {
   const router = useRouterState()
   const currentPath = router.location.pathname
-  const { isLoaded: authLoaded, isSignedIn } = useAuth()
-  
-  // ✅ SAFETY: Only query role when auth is loaded and user is signed in
-  // This prevents queries from running before auth token is ready (prevents ctx.auth errors)
-  // useUserRole already handles this, but we check here for UI state
+  const { isLoaded: authLoaded } = useAuth()
   const userRole = useUserRole()
   
-  // Show loading state if auth isn't ready yet
   if (!authLoaded) {
     return (
-      <Sidebar>
+      <Sidebar variant={variant}>
         <SidebarHeader className="border-b px-4 py-4">
           <span className="text-lg font-bold text-blue-600">BHIMS 2.0</span>
         </SidebarHeader>
@@ -61,43 +64,26 @@ function AdminSidebar() {
     )
   }
 
-  // ✅ SIMPLIFIED: Dashboard contains everything (statistics + residents management)
-  // Only show essential navigation items
   const menuItems = [
     {
       title: 'Dashboard',
       url: '/admin/dashboard',
       icon: LayoutDashboard,
-      roles: ['admin', 'superadmin'] as const,
-      description: 'Statistics & Residents Management',
-    },
-    // Removed: Residents (merged into dashboard)
-    // Removed: Statistics (merged into dashboard)
-    {
-      title: 'Settings',
-      url: '/admin/settings',
-      icon: Settings,
-      roles: ['superadmin'] as const,
+      description: 'Statistics & Overview',
     },
     {
-      title: 'Transactions',
-      url: '/admin/transactions',
-      icon: FileText,
-      roles: ['superadmin'] as const,
+      title: 'Residents',
+      url: '/admin/residents',
+      icon: Users,
+      description: 'Manage Resident Records',
     },
   ]
 
-  // Filter menu items based on role
-  // If role is still loading (undefined), show all items to prevent flickering
-  // Once role loads, filter appropriately
-  const filteredMenuItems = userRole === undefined
-    ? menuItems // Show all while loading
-    : menuItems.filter((item) => item.roles.includes(userRole as any))
-
   return (
-    <Sidebar>
+    <Sidebar variant={variant}>
       <SidebarHeader className="border-b px-4 py-4">
         <Link to="/admin/dashboard" className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
+          <UserCog className="w-5 h-5 text-blue-600" />
           <span className="text-lg font-bold text-blue-600">BHIMS 2.0</span>
           <span className="text-xs text-gray-500 hidden lg:inline">Admin</span>
         </Link>
@@ -107,7 +93,7 @@ function AdminSidebar() {
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {filteredMenuItems.map((item) => {
+              {menuItems.map((item) => {
                 const Icon = item.icon
                 const isActive = currentPath === item.url || currentPath.startsWith(`${item.url}/`)
                 
@@ -128,21 +114,15 @@ function AdminSidebar() {
       </SidebarContent>
       <SidebarFooter className="border-t px-4 py-4">
         <div className="flex flex-col gap-3">
-          {/* User Info Section */}
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-2">
               {userRole && (
                 <Badge
                   variant="outline"
-                  className={cn(
-                    'text-xs font-medium',
-                    userRole === 'superadmin' && 'bg-purple-50 text-purple-700 border-purple-200',
-                    userRole === 'admin' && 'bg-blue-50 text-blue-700 border-blue-200'
-                  )}
+                  className="text-xs font-medium bg-blue-50 text-blue-700 border-blue-200"
                 >
-                  {userRole === 'superadmin' && <Shield className="w-3 h-3 mr-1" />}
-                  {userRole === 'admin' && <UserCog className="w-3 h-3 mr-1" />}
-                  {userRole.charAt(0).toUpperCase() + userRole.slice(1)}
+                  <UserCog className="w-3 h-3 mr-1" />
+                  Admin
                 </Badge>
               )}
             </div>
@@ -154,13 +134,6 @@ function AdminSidebar() {
               }}
             />
           </div>
-          {/* Home Link */}
-          <Link
-            to="/"
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors text-center"
-          >
-            ← Back to Home
-          </Link>
         </div>
       </SidebarFooter>
     </Sidebar>
